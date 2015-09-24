@@ -1,0 +1,15 @@
+title			HadISD
+institution		Met Office Hadley Centre, Exeter, UK
+source			HadISD data product
+references		Dunn, Willett, Parker & Mitchell, 2015, in prep
+creator_name		Robert Dunn
+creator_url		www.metoffice.gov.uk
+creator_email		robert.dunn@metoffice.gov.uk
+time_coverage_start	1931-01-01T00:00Z
+time_coverage_end	2015-01-01T00:00Z
+cdm_data_type		station
+keywords		sub-daily, station, extremes, temperature, dewpoint, pressure, windspeed, wind_direction, cloud_cover
+summary			Quality-controlled, sub-daily, station dataset containing temperature, dewpoint, pressure, windspeed & direction and cloud cover.
+hadisd_version		2.0.0.2015
+isd_version		---
+isd_date		22 April 2015
