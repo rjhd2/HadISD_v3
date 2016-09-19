@@ -6,9 +6,9 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 74                                            $:  Revision of last commit
+#$Rev:: 107                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2015-06-01 18:54:07 +0100 (Mon, 01 Jun 2015) $:  Date of last commit
+#$Date:: 2016-07-29 15:38:24 +0100 (Fri, 29 Jul 2016) $:  Date of last commit
 #************************************************************************
 
 
@@ -21,22 +21,11 @@ import subprocess
 import time
 
 # RJHD utilities
-import netcdf_procs as ncdf
+import netcdf_procs as ncdfp
 import qc_utils as utils
 import qc_tests
+from set_paths_and_vars import *
 
-
-
-DATASTART = dt.datetime(1931,1,1,0,0)
-DATAEND = dt.datetime(2015,1,1,0,0)
-
-FILE_LOCS = "/project/hadobs2/hadisd/v200_2014/code_v200_2014/input_files/"
-DATA_LOCS = "/project/hadobs2/hadisd/v200_2014/netcdf_files_v200_2014/"
-OUTFILE_LOCS = "/project/hadobs2/hadisd/v200_2014/suppl_files_v200_2014/"
-
-
-process_vars = ["temperatures","dewpoints","slp","windspeeds", "winddirs", "total_cloud_cover","low_cloud_cover","mid_cloud_cover","high_cloud_cover"]
-carry_thru_vars = ["cloud_base","precip1_depth","precip1_period","wind_gust", "past_sigwx1"]
 
 
 #*********************************************
@@ -62,7 +51,16 @@ def internal_checks(station_info, restart_id = "", end_id = "", second = False,
     Run through internal checks on list of stations passed
     
     :param list station_info: list of lists - [[ID, lat, lon, elev]] - strings
+    :param str restart_id: which station to start on
+    :param str end_id: which station to end on
     :param bool second: do the second run 
+
+    :param bool all_checks: run all the checks
+
+    :param bool duplicate/odd/frequent/diurnal/gap/records/streaks/
+                climatological/spike/humidity/cloud/variance/winds: run each test separately
+    :param bool diagnostics: print extra material to screen
+    :param bool plots: create plots from each test [many files if all stations/all tests]
 
     '''
     first = not second
@@ -114,9 +112,9 @@ def internal_checks(station_info, restart_id = "", end_id = "", second = False,
             logfile = ""
         else:
             if first:
-                logfile = file(OUTFILE_LOCS+stat[0]+'.log','w')
+                logfile = file(LOG_OUTFILE_LOCS+stat[0]+'.log','w')
             elif second:
-                logfile = file(OUTFILE_LOCS+stat[0]+'.log','a') # append to file if second iteration.
+                logfile = file(LOG_OUTFILE_LOCS+stat[0]+'.log','a') # append to file if second iteration.
             logfile.write(dt.datetime.strftime(dt.datetime.now(), "%A, %d %B %Y, %H:%M:%S\n"))
             logfile.write("Internal Checks\n")
             logfile.write("{:35s} {}\n".format("Station Identifier :", stat[0]))
@@ -151,13 +149,13 @@ def internal_checks(station_info, restart_id = "", end_id = "", second = False,
         # if running through the first time
         if first:
 
-            if os.path.exists(os.path.join(DATA_LOCS, station.id + ".nc.gz")):
+            if os.path.exists(os.path.join(NETCDF_DATA_LOCS, station.id + ".nc.gz")):
                 # if gzip file, unzip here
-                subprocess.call(["gunzip",os.path.join(DATA_LOCS, station.id + ".nc.gz")])
+                subprocess.call(["gunzip",os.path.join(NETCDF_DATA_LOCS, station.id + ".nc.gz")])
                 time.sleep(5) # make sure it is unzipped before proceeding
 
             # read in the data
-            ncdf.read(os.path.join(DATA_LOCS, station.id + ".nc"), station, process_vars, opt_var_list = carry_thru_vars, diagnostics = diagnostics)
+            ncdfp.read(os.path.join(NETCDF_DATA_LOCS, station.id + ".nc"), station, process_vars, opt_var_list = carry_thru_vars, diagnostics = diagnostics)
 
             if plots or diagnostics:
                 print "{:35s}  {}\n".format("Total station record size :",len(station.time.data))
@@ -178,7 +176,7 @@ def internal_checks(station_info, restart_id = "", end_id = "", second = False,
 
         # or if second pass through?
         elif second:
-            ncdf.read(os.path.join(DATA_LOCS, station.id + "_mask.nc"), station, process_vars, opt_var_list = carry_thru_vars, diagnostics = diagnostics)
+            ncdfp.read(os.path.join(NETCDF_DATA_LOCS, station.id + "_mask.nc"), station, process_vars, opt_var_list = carry_thru_vars, diagnostics = diagnostics)
             print "{:35s}  {}\n".format("Total station record size :",len(station.time.data))
 
             match_to_compress = utils.create_fulltimes(station, process_vars, DATASTART, DATAEND, carry_thru_vars)
@@ -257,22 +255,23 @@ def internal_checks(station_info, restart_id = "", end_id = "", second = False,
 
         # write to file
         if first:
-            ncdf.write(os.path.join(DATA_LOCS, station.id + "_internal.nc"), station, process_vars, os.path.join(FILE_LOCS,'attributes.dat'), opt_var_list = carry_thru_vars, compressed = match_to_compress, processing_date = '', qc_code_version = qc_code_version)
+            ncdfp.write(os.path.join(NETCDF_DATA_LOCS, station.id + "_internal.nc"), station, process_vars, os.path.join(INPUT_FILE_LOCS,'attributes.dat'), opt_var_list = carry_thru_vars, compressed = match_to_compress, processing_date = '', qc_code_version = qc_code_version)
             # gzip the raw file
-            subprocess.call(["gzip",os.path.join(DATA_LOCS, station.id + ".nc")])
+            subprocess.call(["gzip",os.path.join(NETCDF_DATA_LOCS, station.id + ".nc")])
 
         elif second:
 
-            ncdf.write(os.path.join(DATA_LOCS, station.id + "_internal2.nc"), station, process_vars, os.path.join(FILE_LOCS,'attributes.dat'), opt_var_list = carry_thru_vars, compressed = match_to_compress, processing_date = '', qc_code_version = qc_code_version)
+            ncdfp.write(os.path.join(NETCDF_DATA_LOCS, station.id + "_internal2.nc"), station, process_vars, os.path.join(INPUT_FILE_LOCS,'attributes.dat'), opt_var_list = carry_thru_vars, compressed = match_to_compress, processing_date = '', qc_code_version = qc_code_version)
             # gzip the raw file
-            subprocess.call(["gzip",os.path.join(DATA_LOCS, station.id + "_mask.nc")])
+            subprocess.call(["gzip",os.path.join(NETCDF_DATA_LOCS, station.id + "_mask.nc")])
 
 
         logfile.write(dt.datetime.strftime(dt.datetime.now(), "%A, %d %B %Y, %H:%M:%S\n"))
         logfile.write("processing took {:4.0f}s\n\n".format(time.time() - process_start_time))
         logfile.close()
 
-        print "\n"
+    print "Internal Checks completed\n"
+
     return # internal_checks
 
 #************************************************************************
@@ -345,7 +344,7 @@ if __name__=="__main__":
     station_list = "candidate_stations.txt"
 
     try:
-        station_info = np.genfromtxt(os.path.join(FILE_LOCS, station_list), dtype=(str))
+        station_info = np.genfromtxt(os.path.join(INPUT_FILE_LOCS, station_list), dtype=(str))
     except IOError:
         print "station list not found"
         sys.exit()
@@ -380,3 +379,4 @@ if __name__=="__main__":
                     plots = args.plots)
 
 
+#************************************************************************

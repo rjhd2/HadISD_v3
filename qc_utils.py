@@ -6,9 +6,9 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 77                                            $:  Revision of last commit
+#$Rev:: 108                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2015-07-06 16:23:09 +0100 (Mon, 06 Jul 2015) $:  Date of last commit
+#$Date:: 2016-09-19 13:56:07 +0100 (Mon, 19 Sep 2016) $:  Date of last commit
 #************************************************************************
 
 import numpy as np
@@ -98,12 +98,14 @@ def create_fulltimes(station, var_list, start, end, opt_var_list = [], do_input_
 
     # if optional/carry through variables given, then set to extract these too
     if opt_var_list != []:
-        var_list = np.append(var_list, opt_var_list)
+        full_var_list = np.append(var_list, opt_var_list)
+    else:
+        full_var_list = var_list
   
     if do_input_station_id:
-        final_var_list = np.append(var_list, ["input_station_id"])
+        final_var_list = np.append(full_var_list, ["input_station_id"])
     else:
-        final_var_list = var_list
+        final_var_list = full_var_list
 
     
     for variable in final_var_list:
@@ -126,7 +128,7 @@ def create_fulltimes(station, var_list, start, end, opt_var_list = [], do_input_
         # but re-mask those filled timestamps which have missing data
         st_var.data = np.ma.masked_where(new == st_var.mdi, new)
         
-        if variable not in ["input_station_id"] and do_flagged_obs == True:
+        if variable in var_list and do_flagged_obs == True:
             # flagged values
             new = np.zeros(len(fulltimes))
             new.fill(st_var.mdi)
@@ -332,6 +334,19 @@ def apply_filter_flags(st_var):
     '''
 
     return  np.ma.masked_where(st_var.flags == 1, st_var.data) # apply_filter_flags
+
+#*********************************************
+def apply_flags_to_mask(station, variable):
+    '''
+    Return the data as masked array including the flagged values
+    '''
+    st_var = getattr(station, variable)
+
+    st_var.data.fill_value = st_var.mdi
+
+    st_var.data = np.ma.masked_where(st_var.data == st_var.fdi, st_var.data)
+
+    return  st_var # apply_flags_to_mask
 
 #*********************************************
 def IQR(data, percentile = 0.25):
@@ -554,7 +569,7 @@ def mask_old(station, var_list):
     return station
 
 #************************************************************************
-def mask(station, var_list):
+def mask(station, var_list, logfile):
     '''
     Apply the flags to the data and copy across to storage attribute
     Uses flag array rather than built in system
@@ -586,6 +601,11 @@ def mask(station, var_list):
         st_var.flagged_obs[flag_locs] = st_var.data[flag_locs]
 
         st_var.data[flag_locs] = st_var.fdi
+
+        if logfile == "":
+            print "Mask applied to {}".format(variable)
+        else:
+            logfile.write("Mask applied to {}\n".format(variable))
 
     station = append_history(station, "Masking")
 
@@ -916,3 +936,21 @@ def apply_windspeed_flags_to_winddir(station, diagnostics = False):
         print "{} flags copied from windspeeds to winddirs".format(len(new_flags) - len(old_flags))
 
     return # apply_windspeed_flags_to_winddir
+
+#************************************************************************
+def nearly_equal(a,b,sig_fig=5):
+    """
+    Returns it two numbers are nearly equal within sig_fig decimal places
+
+http://stackoverflow.com/questions/558216/function-to-determine-if-two-numbers-are-nearly-equal-when-rounded-to-n-signific
+
+    :param flt a: number 1
+    :param flt b: number 2
+    :param int sig_fig: number of decimal places to check agreement to
+
+    :returns bool:    
+    """
+
+    return ( a==b or 
+             int(a*10**sig_fig) == int(b*10**sig_fig)
+           )

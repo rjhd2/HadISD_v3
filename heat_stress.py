@@ -6,9 +6,9 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 79                                            $:  Revision of last commit
+#$Rev:: 107                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2015-09-23 14:46:36 +0100 (Wed, 23 Sep 2015) $:  Date of last commit
+#$Date:: 2016-07-29 15:38:24 +0100 (Fri, 29 Jul 2016) $:  Date of last commit
 #************************************************************************
 
 import numpy as np
@@ -181,19 +181,22 @@ The Rothfusz regression is not valid for extreme temperature and relative humidi
     return heat_index # calculate_heat_index
 
 #************************************************************************
-def run_calcs(station):
+def run_calcs(station, logfile, plots = False, diagnostics = False):
     '''
     Run the heat stress calculations and add the new attributes to the station
 
     :param obj station: station object
+    :param file logfile: logfile to store outputs
+    :param boolean diagnostics: output diagnostic information
+    :param boolean plots: make a plot
 
     :returns: updated station object with heat stress values.
     '''
 
-    temperatures = getattr(station, "temperatures")
-    rh = getattr(station, "relative_humidity")
-    e_v = getattr(station, "vapour_pressure")
-    windspeeds = getattr(station, "windspeeds")
+    temperatures = utils.apply_flags_to_mask(station, "temperatures")
+    rh = getattr(station, "relative_humidity") # no separate flags using fdi
+    e_v = getattr(station, "vapour_pressure") # no separate flags using fdi
+    windspeeds = utils.apply_flags_to_mask(station, "windspeeds")
    
     thi = utils.set_MetVar_attributes("temperature_humidity_index", "Temperature Humidity Index (THI)", "temperature_humidity_index", "1", temperatures.mdi, np.dtype('float64'))
     wbgt = utils.set_MetVar_attributes("wet_bulb_globe_temperature", "Wet Bulb Globe Temperature (WBGT)", "wet_bulb_globe_temperature", "C", temperatures.mdi, np.dtype('float64'))
@@ -208,6 +211,11 @@ def run_calcs(station):
     humidex.data = calculate_humidex(temperatures.data, e_v.data)
     apparent_t.data = calculate_apparent_t(temperatures.data, e_v.data, windspeeds.data)
     heat_index.data = calculate_heat_index(temperatures.data, rh.data)
+
+    if plots or diagnostics:
+        print "Heat stress variables calculated, setting attributes\n"
+    else:
+        logfile.write("Heat stress variables calculated, setting attributes\n")
 
     setattr(station, "THI", thi)
     setattr(station, "WBGT", wbgt)

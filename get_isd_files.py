@@ -1,9 +1,9 @@
 #!/usr/local/sci/bin/python2.7
 #------------------------------------------------------------
 #                    SVN Info
-#$Rev:: 52                                            $:  Revision of last commit
+#$Rev:: 104                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2015-01-28 15:01:15 +0000 (Wed, 28 Jan 2015) $:  Date of last commit
+#$Date:: 2016-07-26 10:52:02 +0100 (Tue, 26 Jul 2016) $:  Date of last commit
 #------------------------------------------------------------
 # History:
 #  16 - Created and tested
@@ -40,21 +40,24 @@ import sys
 import subprocess
 import argparse
 
+# RJHD utils
+from set_paths_and_vars import *
+
+
 # Globals
-#  Adjust these for each run
 HOST=r'ftp://ftp.ncdc.noaa.gov'
 ISD_LOC=r'/pub/data/noaa/'
-NEW_DATA_LOCATION=r'/project/hadobs2/hadisd/v200_2014/isd_files_v200_2014/'
-OLD_DATA_LOCATION=r'/project/hadobs2/hadisd/v200_2014/isd_files_v200_2014/'
 
-FILE_LOCS = "input_files/"
 STATIONLISTFILES=["candidate_stations.txt","final_mergers.txt"]
 
         
+#---------------------------------------------------------------------
 class DataFile(object):
-    '''
+    """
     Class to hold filename, size and modification date
-    '''
+
+    creates target_dir attribute from filen value
+    """
     def __init__(self,filen,date,size):
         self.filen=filen
         self.date=date
@@ -85,7 +88,7 @@ class DataFile(object):
 
 #*********************************************
 def GetFileListing(host,location,year):
-    '''Log in to Server and return file listing'''
+    """Log in to Server and return file listing"""
 
     try:
         ftpsite=urllib.urlopen(host+location+str(year))
@@ -100,14 +103,14 @@ def GetFileListing(host,location,year):
 
 #*********************************************
 def ExtractFileData(file_list):
-    '''
+    """
     Extract all the filenames, creation dates and sizes
 
     Convert the sizes to integers and the file modified 
     date to datetime objects
 
     Just parses HTML - possibly could be improved
-    '''
+    """
 
     data_files=[]
 
@@ -147,15 +150,15 @@ def ExtractFileData(file_list):
 
 #*********************************************
 def CombineHadISDStations(filelist,outfile, uk=False):
-    '''
+    """
     Combine all the input station lists into one
     master list
-    '''
+    """
 
     stationlist=[]
     # candidate_stations.txt
     try:
-        with open(FILE_LOCS+filelist[0],'r') as ifile:
+        with open(INPUT_FILE_LOCS+filelist[0],'r') as ifile:
             for line in ifile:
                 stationlist+=[line.split()[0].strip()]
 
@@ -164,7 +167,7 @@ def CombineHadISDStations(filelist,outfile, uk=False):
 
     # final_mergers.txt
     try:
-        with open(FILE_LOCS+filelist[1],'r') as ifile:
+        with open(INPUT_FILE_LOCS+filelist[1],'r') as ifile:
             for line in ifile:
                 line=line.split()
                 stationlist.extend(line[1:])
@@ -175,7 +178,7 @@ def CombineHadISDStations(filelist,outfile, uk=False):
     stationlist=sorted(set(stationlist))
 
     try:
-        with open(FILE_LOCS+outfile,'w') as ofile:
+        with open(INPUT_FILE_LOCS+outfile,'w') as ofile:
             for station in stationlist:
                 if uk:
                     if station[:2] == "03":
@@ -190,12 +193,12 @@ def CombineHadISDStations(filelist,outfile, uk=False):
 
 #*********************************************
 def HadISDStationExtract(mlistfile):
-    '''
+    """
     Extract the list of stations used in HadISD
-    '''
+    """
 
     try:
-        with open(FILE_LOCS + mlistfile,'r') as ifile:
+        with open(INPUT_FILE_LOCS + mlistfile,'r') as ifile:
             MasterStationList=[]
             for line in ifile:
                 if line[0]=="#":
@@ -212,12 +215,12 @@ def HadISDStationExtract(mlistfile):
 
 #*********************************************
 def FilterStations(MasterStationList,data_files):
-    '''
+    """
     Filter the files to download by those stations required
 
     If station of remote file exists in master list, want to download, 
     else not.    
-    '''
+    """
 
     DownloadStationList=[]
     for dfile in data_files:
@@ -230,12 +233,12 @@ def FilterStations(MasterStationList,data_files):
 
 #*********************************************
 def CheckToDelete(MasterStationList,data_files):
-    '''
+    """
     Extract file names on server, and check if any which are not in
     master station list
 
     These already may not exist on the local system
-    '''
+    """
 
     RemoteStations=[]
 
@@ -251,7 +254,7 @@ def CheckToDelete(MasterStationList,data_files):
 
 #*********************************************
 def DownloadChecks(file_path, datafile, lastrun, CheckSize = False):
-    '''
+    """
     Check whether this file should be re-downloaded
 
     Compares file date and size (where appropriate) to set
@@ -259,9 +262,9 @@ def DownloadChecks(file_path, datafile, lastrun, CheckSize = False):
 
     NOTE - remote files are gzip -9, local files are gzip -6 
     (the default) so remote files are smaller than local
-    files that have been gunzip'd a and gzip'd.  Therefore
+    files that have been gunzip'd and gzip'd.  Therefore
     there is the CheckSize setting.
-    '''
+    """
 
     Status=False
 
@@ -293,7 +296,7 @@ def DownloadChecks(file_path, datafile, lastrun, CheckSize = False):
 
 #*********************************************
 def CheckToDownload(DownloadStationList, lastrun):
-    '''
+    """
     Check if remote file is different from local file
 
     Check using file ages and sizes if remote file
@@ -307,19 +310,19 @@ def CheckToDownload(DownloadStationList, lastrun):
     (the default) so remote files are smaller than local
     files that have been gunzip'd a and gzip'd.  Therefore
     there is the CheckSize setting.
-    '''
+    """
 
     ToDownload=[False for dsl in range(len(DownloadStationList))]
 
     for df, dfile in enumerate(DownloadStationList):
 
-        old_file = OLD_DATA_LOCATION + dfile.target_dir + dfile.filen
+        old_file = OLD_ISD_DATA_LOCS + dfile.target_dir + dfile.filen
         
         ToDownload[df] = DownloadChecks(old_file, dfile, lastrun)
         # also check if file recently downloaded to same directory   
         #   and if this needs overwriting
         #   allows for scrape to be performed into same directory
-        new_file = NEW_DATA_LOCATION + dfile.target_dir + dfile.filen
+        new_file = ISD_DATA_LOCS + dfile.target_dir + dfile.filen
         
         # only check if the file exists there.
         if os.path.exists(new_file):
@@ -329,7 +332,7 @@ def CheckToDownload(DownloadStationList, lastrun):
 
 #*********************************************
 def DownloadStations(DownloadStationList,ToDownload,year, verbose = False):
-    '''
+    """
     Download the required files if necessary for this year
 
     In filtered file list (DownloadStationList), if the files 
@@ -341,13 +344,13 @@ def DownloadStations(DownloadStationList,ToDownload,year, verbose = False):
     old location to the new location.
 
     **options allows for verbose setting
-    '''
+    """
 
     # download the files
     for df,dfile in enumerate(DownloadStationList):
 
 
-        new_loc=NEW_DATA_LOCATION + dfile.target_dir
+        new_loc=ISD_DATA_LOCS + dfile.target_dir
 
         if not os.path.exists(new_loc):
             # if storage directory doesn't exist, make it
@@ -384,7 +387,7 @@ def DownloadStations(DownloadStationList,ToDownload,year, verbose = False):
                 if verbose:
                     print "  Up-to-date file already exists in ", new_loc
             else:
-                old_loc = OLD_DATA_LOCATION + dfile.target_dir
+                old_loc = OLD_ISD_DATA_LOCS + dfile.target_dir
                 if verbose:
                     print "  Copying file from {} to {}".format(old_loc, new_loc)
             
@@ -394,19 +397,19 @@ def DownloadStations(DownloadStationList,ToDownload,year, verbose = False):
 
 #*********************************************
 def DeleteFiles(ToDelete, year, verbose = False):
-    '''
+    """
     Delete local files if they are not on the server
 
     If local files marked as not existing on server
     exist, then delete them.  They may already not exist
     locally - and no output printed in this case    
-    '''
+    """
 
     for st, station in enumerate(ToDelete):
 
         target_dir=r'station'+station[0:2]+r's/'
 
-        new_loc=NEW_DATA_LOCATION+target_dir
+        new_loc=ISD_DATA_LOCS+target_dir
 
         st_filen=station+'-'+str(year)+'.gz'
 
@@ -438,47 +441,35 @@ if __name__ == "__main__":
     # extract last download time 
     #    test both old and new location (in case it's an updating download)
     try:
-        logfile=OLD_DATA_LOCATION+r'last_download.txt'
+        logfile=OLD_ISD_DATA_LOCS+r'last_download.txt'
         with open(logfile,'r') as lf:
             for line in lf:
                 old_lastrun=datetime.datetime.strptime(line.split("at")[-1].strip(), '%d-%m-%Y %H:%M') # the last time this code was run prior to planned run
     except:
-        print "Could not create log file"
+        print "Could not read log file "+OLD_ISD_DATA_LOCS+r'last_download.txt'
         sys.exit()   
  
     try:
-        logfile=NEW_DATA_LOCATION+r'last_download.txt'
+        logfile=ISD_DATA_LOCS+r'last_download.txt'
         with open(logfile,'r') as lf:
             for line in lf:
                 new_lastrun=datetime.datetime.strptime(line.split("at")[-1].strip(), '%d-%m-%Y %H:%M') # the last time this code was run prior to planned run
     except:
-        print "Could not create log file"
-        sys.exit()   
-    
+        print "Could not read log file "+ISD_DATA_LOCS+r'last_download.txt'
+        new_lastrun = old_lastrun
+
+
     lastrun = max(old_lastrun, new_lastrun)
 
 
     print "Script last run on {}".format(datetime.datetime.strftime(lastrun, '%d-%b-%Y %H:%M'))
 
     # Allow for check before running and overwriting files
-    print "Old Data Location {}".format(OLD_DATA_LOCATION)
-    print "New Data Location {}".format(NEW_DATA_LOCATION)
+    print "Old Data Location {}".format(OLD_ISD_DATA_LOCS)
+    print "New Data Location {}".format(ISD_DATA_LOCS)
 
-    DoRun=raw_input("Downloading or copying data from {} to {}.  Proceed (Y/N)?".format(STARTYEAR,ENDYEAR))
-    if DoRun not in ["Y","y"]:
-        print "Please adjust python as appropriate"
-        sys.exit("Quitting")
+    print "Downloading or copying data from {} to {}".format(OLD_ISD_DATA_LOCS,ISD_DATA_LOCS)
 
-
-
-    # output record of when last download occurred
-    try:
-        logfile=NEW_DATA_LOCATION+r'last_download.txt'
-        with open(logfile,'w') as lf:
-            lf.write("Last download commenced at %s \n" %  datetime.datetime.now().strftime('%d-%m-%Y %H:%M'))
-    except:
-        print "Could not create log file"
-        sys.exit()
 
     # extra diagnostic output
     IsVerbose=True
@@ -488,8 +479,8 @@ if __name__ == "__main__":
     
     # test all required files exist
     for slfile in STATIONLISTFILES:
-        if not os.path.exists(os.getcwd() + '/' + FILE_LOCS + slfile):
-            print "Missing file required for run ", FILE_LOCS + slfile
+        if not os.path.exists(INPUT_FILE_LOCS + slfile):
+            print "Missing file required for run ", INPUT_FILE_LOCS + slfile
             sys.exit("Please amend and re-run script")
         
     # data stored in years
@@ -522,6 +513,15 @@ if __name__ == "__main__":
 
         print "\nCompleted year %i\n" % year
     # move to next year
+
+    # output record of when last download occurred
+    try:
+        logfile=ISD_DATA_LOCS+r'last_download.txt'
+        with open(logfile,'w') as lf:
+            lf.write("Last download completed at %s \n" %  datetime.datetime.now().strftime('%d-%m-%Y %H:%M'))
+    except:
+        print "Could not create log file "+ISD_DATA_LOCS+r'last_download.txt'
+        sys.exit()
 
     print "finished"
     print datetime.datetime.now().strftime('%d-%m-%Y %H:%M')

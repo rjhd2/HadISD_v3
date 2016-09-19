@@ -6,9 +6,9 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 69                                            $:  Revision of last commit
+#$Rev:: 103                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2015-05-05 11:25:15 +0100 (Tue, 05 May 2015) $:  Date of last commit
+#$Date:: 2016-07-26 10:41:19 +0100 (Tue, 26 Jul 2016) $:  Date of last commit
 #************************************************************************
 
 
@@ -20,7 +20,7 @@ import gc
 
 # RJHD routines
 import qc_utils as utils
-import netcdf_procs as ncdf
+import netcdf_procs as ncdfp
 
 
 N_NEIGHBOURS = 10
@@ -245,9 +245,9 @@ def select_neighbours(station, variable, neighbour_info, neighbours, neighbour_d
         neigh = utils.Station(n_details[0], float(n_details[1]), float(n_details[2]), float(n_details[3]))
 
         if first:
-            ncdf.read(os.path.join(data_locs, neigh.id + "_internal.nc"), neigh, [variable], diagnostics = diagnostics, read_input_station_id = False)
+            ncdfp.read(os.path.join(data_locs, neigh.id + "_internal.nc"), neigh, [variable], diagnostics = diagnostics, read_input_station_id = False)
         elif second:
-            ncdf.read(os.path.join(data_locs, neigh.id + "_internal2.nc"), neigh, [variable], diagnostics = diagnostics, read_input_station_id = False)
+            ncdfp.read(os.path.join(data_locs, neigh.id + "_internal2.nc"), neigh, [variable], diagnostics = diagnostics, read_input_station_id = False)
 
         dummy = utils.create_fulltimes(neigh, [variable], datastart, dataend, [], do_input_station_id = False)
 

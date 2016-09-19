@@ -6,9 +6,9 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 77                                            $:  Revision of last commit
+#$Rev:: 103                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2015-07-06 16:23:09 +0100 (Mon, 06 Jul 2015) $:  Date of last commit
+#$Date:: 2016-07-26 10:41:19 +0100 (Tue, 26 Jul 2016) $:  Date of last commit
 #************************************************************************
 
 import numpy as np
@@ -18,9 +18,13 @@ import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import sys
 
+# RJHD utils
 import qc_utils as utils
-import netcdf_procs as ncdf
+import netcdf_procs as ncdfp
+from set_paths_and_vars import *
 
+
+#*******************************************************
 class QCtest(object):
     '''
     Class to hold QC test parameters
@@ -34,15 +38,9 @@ class QCtest(object):
 
 
 #*******************************************************
-FILE_LOCS = "/project/hadobs2/hadisd/v200_2014/code_v200_2014/input_files/"
-DATA_LOCS = "/project/hadobs2/hadisd/v200_2014/netcdf_files_v200_2014/"
-IMG_LOCS = "/project/hadobs2/hadisd/v200_2014/img_files_v200_2014/"
-
-
-DATASTART = dt.datetime(1931,1,1,0,0)
-DATAEND = dt.datetime(2015,1,1,0,0)
-
 station_list = "candidate_stations.txt"
+
+# overwrite the global list
 process_vars = ["temperatures","dewpoints","slp","windspeeds","total_cloud_cover"]
 
 input_id = "035715-99999"
@@ -165,7 +163,7 @@ tests = {"temperatures" : [0,1,4,5,8,12,16,20,24,27,41,44,54,58],
 
 
 try:
-    station_info = np.genfromtxt(os.path.join(FILE_LOCS, station_list), dtype=(str))
+    station_info = np.genfromtxt(os.path.join(INPUT_FILE_LOCS, station_list), dtype=(str))
 except IOError:
     print "station list not found"
     sys.exit()
@@ -182,7 +180,7 @@ else:
     sys.exit(0)
 
 # read attributes and qc_flags
-ncdf.read(os.path.join(DATA_LOCS, station.id + "_external.nc"), station, process_vars, [])
+ncdfp.read(os.path.join(NETCDF_DATA_LOCS, station.id + "_external.nc"), station, process_vars, [])
 
 match_to_compress = utils.create_fulltimes(station, process_vars, DATASTART, DATAEND, [])
 
@@ -256,7 +254,7 @@ for year in range(DATASTART.year, DATAEND.year):
         watermarkstring="/".join(os.getcwd().split('/')[4:])+'/'+os.path.basename( __file__ )+"   "+dt.datetime.strftime(dt.datetime.now(), "%d-%b-%Y %H:%M")
         plt.figtext(0.01,0.01,watermarkstring,size=5)
 
-        plt.savefig(IMG_LOCS+"{}_{}_fails.png".format(station.id, DATASTART.year+year_loc[0]))
+        plt.savefig(IMAGE_LOCS+"{}_{}_fails.png".format(station.id, DATASTART.year+year_loc[0]))
         plt.close()
     else:
         plt.close()

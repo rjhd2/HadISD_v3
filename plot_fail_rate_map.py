@@ -6,27 +6,26 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 78                                            $:  Revision of last commit
+#$Rev:: 108                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2015-07-15 16:49:32 +0100 (Wed, 15 Jul 2015) $:  Date of last commit
+#$Date:: 2016-09-19 13:56:07 +0100 (Mon, 19 Sep 2016) $:  Date of last commit
 #************************************************************************
 
 import numpy as np
 import datetime as dt
 import os
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 
+# RJHD utils
 import qc_utils as utils
-import netcdf_procs as ncdf
+import netcdf_procs as ncdfp
+from set_paths_and_vars import *
 
 
 #*******************************************************
-
-DATA_LOCS = "/project/hadobs2/hadisd/v200_2014/netcdf_files_v200_2014/"
-FILE_LOCS = "/project/hadobs2/hadisd/v200_2014/code_v200_2014/input_files/"
-IMG_LOCS = "/project/hadobs2/hadisd/v200_2014/code_v200_2014/images/"
-
 qc_test=['DUP','TFV','DFV','SFV','DNL','TGP','DGP','SGP','TRC','DRC',\
 	  'WRC','PRC','TSS','DSS','WSS','PSS','HTS','HDS','HWS','HPS',\
 	  'DTS','DDS','DWS','DPS','TCM','DCM','PCM','TSP','DSP','PSP',\
@@ -52,7 +51,7 @@ diagnostics = False
 start_time_string = dt.datetime.strftime(dt.datetime.now(), "%Y%m%d")
 
 try:
-    station_info = np.genfromtxt(os.path.join(FILE_LOCS, station_list), dtype=(str))
+    station_info = np.genfromtxt(os.path.join(INPUT_FILE_LOCS, station_list), dtype=(str))
 except IOError:
     print "station list not found"
     sys.exit()
@@ -78,7 +77,7 @@ for st,stat in enumerate(station_info):
     
 
     # read attributes and qc_flags
-    ncdf.read(os.path.join(DATA_LOCS, station.id + "_mask.nc"), station, process_vars, [], diagnostics = diagnostics)
+    ncdfp.read(os.path.join(NETCDF_DATA_LOCS, station.id + "_mask.nc"), station, process_vars, [], diagnostics = diagnostics)
 
     # sum qc_flags:
     # remove multi-level flagging
@@ -141,7 +140,7 @@ for st,stat in enumerate(station_info):
 Lats = np.array(Lats)
 Lons = np.array(Lons)
 
-outfile = file(FILE_LOCS+"all_fails_summary_{}.dat".format(start_time_string),'w')
+outfile = file(INPUT_FILE_LOCS+"all_fails_summary_{}.dat".format(start_time_string),'w')
 
 for t,test in enumerate(qc_test):
 
@@ -190,7 +189,7 @@ for t,test in enumerate(qc_test):
 
     leg=plt.legend(loc='lower center',ncol=4, bbox_to_anchor = (0.5,-0.2), frameon=False, title='',prop={'size':11},labelspacing=0.15,columnspacing=0.5, numpoints=1)
 
-    plt.savefig(IMG_LOCS+"All_fails_{}_{}.png".format(test, start_time_string))
+    plt.savefig(IMAGE_LOCS+"All_fails_{}_{}.png".format(test, start_time_string))
     plt.close()
 
 
@@ -198,3 +197,4 @@ for t,test in enumerate(qc_test):
 
 outfile.close()
               
+#*******************************************************

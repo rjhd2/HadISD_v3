@@ -15,15 +15,12 @@ import numpy as np
 import datetime as dt
 import os
 
-import netcdf_procs as ncdf
+# RJHD utils
+import netcdf_procs as ncdfp
 import qc_utils as utils
+from set_paths_and_vars import *
 
 #*******************************************************
-
-DATA_LOCS = "/project/hadobs2/hadisd/v200_2014/netcdf_files_v200_2014/"
-FILE_LOCS = "/project/hadobs2/hadisd/v200_2014/code_v200_2014/input_files/"
-IMG_LOCS = "/project/hadobs2/hadisd/v200_2014/code_v200_2014/images/"
-
 qc_test=['DUP','TFV','DFV','SFV','DNL','TGP','DGP','SGP','TRC','DRC',\
 	  'WRC','PRC','TSS','DSS','WSS','PSS','HTS','HDS','HWS','HPS',\
 	  'DTS','DDS','DWS','DPS','TCM','DCM','PCM','TSP','DSP','PSP',\
@@ -38,7 +35,7 @@ diagnostics = False
 start_time_string = dt.datetime.strftime(dt.datetime.now(), "%Y%m%d")
 
 try:
-    station_info = np.genfromtxt(os.path.join(FILE_LOCS, station_list), dtype=(str))
+    station_info = np.genfromtxt(os.path.join(INPUT_FILE_LOCS, station_list), dtype=(str))
 except IOError:
     print "station list not found"
     sys.exit()
@@ -47,7 +44,7 @@ except IOError:
 Lons = []
 Lats = []
 
-outfile = file(FILE_LOCS+"qc_summary_{}.dat".format(start_time_string),'w')
+outfile = file(INPUT_FILE_LOCS+"qc_summary_{}.dat".format(start_time_string),'w')
 
 for st,stat in enumerate(station_info):  
 
@@ -61,7 +58,7 @@ for st,stat in enumerate(station_info):
     
 
     # read attributes and qc_flags
-    ncdf.read(os.path.join(DATA_LOCS, station.id + "_mask.nc"), station, process_vars, [], diagnostics = diagnostics)
+    ncdfp.read(os.path.join(NETCDF_DATA_LOCS, station.id + "_mask.nc"), station, process_vars, [], diagnostics = diagnostics)
 
     # sum qc_flags:
     # remove multi-level flagging

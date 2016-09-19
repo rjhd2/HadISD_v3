@@ -1,9 +1,9 @@
 #!/usr/local/sci/bin/python
 #************************************************************************
 #                    SVN Info
-#$Rev:: 61                                            $:  Revision of last commit
+#$Rev:: 104                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2015-04-28 18:11:08 +0100 (Tue, 28 Apr 2015) $:  Date of last commit
+#$Date:: 2016-07-26 10:52:02 +0100 (Tue, 26 Jul 2016) $:  Date of last commit
 #************************************************************************
 
 '''
@@ -36,13 +36,11 @@ import os
 import argparse
 import datetime, calendar
 
+# RJHD utils
+from set_paths_and_vars import *
+
+
 # Globals
-INPUT_DATA_DIR =r'/project/hadobs2/hadisd/v200_2014/isd_files_v200_2014/'
-OUTPUT_DATA_DIR=r'/project/hadobs2/hadisd/v200_2014/netcdf_files_v200_2014/'
-OUTPUT_FILE_DIR=r'/project/hadobs2/hadisd/v200_2014/suppl_files_v200_2014/'
-
-FILE_LOCS = r'input_files/'
-
 station_list_filename= 'candidate_stations.txt'
 merger_list_filename = 'final_mergers.txt'
 
@@ -50,14 +48,14 @@ INTMDI=-999
 FLTMDI=-1.e30
 hours = True # output time axis in hours.
 
-NCDC_FLAGS={'A':10,'U':11,'P':12,'I':13,'M':14,'C':15,'R':16}
+NCDC_FLAGS={'A':10,'U':11,'P':12,'I':13,'M':14,'C':15,'R':16, 'E':17, 'J':18}
 
 #---------------------------------------------------------------------
 
 
 #************************************************************************
 def ReadStations(filename):
-    ''' 
+    """ 
     Read Station Information
 
     :param string filename: name and location of input file
@@ -66,19 +64,19 @@ def ReadStations(filename):
 
     Use numpy genfromtxt reading to read in all station 
     data in ID,Lat,Lon,Elev list
-    '''
+    """
     return np.genfromtxt(filename, dtype=(str)) #  ReadStations
 
 
 #************************************************************************
 def ReadComposites(filename):
-    ''' 
+    """ 
     Read Composite Station Information
 
     :param string filename: name and location of input file
 
     :returns: list of lists containing composites
-    '''
+    """
     composites=[]
     try:
         with open(filename) as infile:
@@ -92,12 +90,12 @@ def ReadComposites(filename):
 
 #************************************************************************
 def RepresentsInt(s):
-    '''
+    """
     Tests if string is an integer
 
     :param string s: string to test
     :returns: boolean if string is valid integer
-    '''
+    """
     try: 
         int(s)
         return True
@@ -106,19 +104,19 @@ def RepresentsInt(s):
 
 #************************************************************************
 def TimeMatch(timearray,testtime, lower,upper):
-    '''
+    """
     Do matching of np array to find time step
 
     :param array timearray: np array of timestamps
     :param float testtime: timestep to find
     :return: int of location
-    '''
+    """
     return np.argwhere(timearray[lower:upper]==testtime)[0] # TimeMatch
 
 
 #************************************************************************
 def ExtractValues(missing,line,location,length,test,divisor=1.,flagoffset=0, doflag=True):
-    '''
+    """
     Extract the appropriate values from the line string.
 
     Assumes that usually it is a value,flag pair, with no scaling factor and that
@@ -134,7 +132,7 @@ def ExtractValues(missing,line,location,length,test,divisor=1.,flagoffset=0, dof
     :param boolean doflag: to extract a flag value, default=True
 
     :returns: tuple of value, flag OR value if doflag=False
-    '''
+    """
 
     temp_value=line[location:location+length]
 
@@ -175,7 +173,7 @@ def ExtractValues(missing,line,location,length,test,divisor=1.,flagoffset=0, dof
 
 #************************************************************************
 def TestToExtract(data,missing,overwrite):
-    '''
+    """
     Test if need to extract the data
 
     :param float/int data: data to test
@@ -183,7 +181,7 @@ def TestToExtract(data,missing,overwrite):
     :param boolean overwrite: to overwrite or not
 
     :returns: boolean if condition met
-    '''
+    """
 
     if data==missing or overwrite:
         return True
@@ -193,7 +191,7 @@ def TestToExtract(data,missing,overwrite):
 
 #************************************************************************
 def ExtractionProcess(data, flags, time, missing, missingtest, line, location, length,divisor=1.,flagoffset=0, doflag=True):
-    '''
+    """
     Run the extraction, and write the values if the extracted ones are not empty
 
     :param array data: the data array
@@ -208,7 +206,7 @@ def ExtractionProcess(data, flags, time, missing, missingtest, line, location, l
     :param float divisor: scaling factor for data, default=1
     :param int flagoffset: shift of flag from end of data, default=0
     :param boolean doflag: to extract a flag value, default=True
-    '''
+    """
 
     if doflag:
         value,flag=ExtractValues(missing,line,location,length,missingtest,divisor=divisor,flagoffset=flagoffset,doflag=doflag)
@@ -231,7 +229,7 @@ def ExtractionProcess(data, flags, time, missing, missingtest, line, location, l
 
 #************************************************************************
 def WriteDubious(outfile,infile,code, station, time):
-    '''
+    """
     Write note to dubious file list.
     
     :param string outfile: filename to be written to
@@ -241,7 +239,7 @@ def WriteDubious(outfile,infile,code, station, time):
     :param string time: time of the dubious data
 
     :returns: int of flag status.
-    '''
+    """
     flagged=0
     try:
         with open(outfile,'a') as of:
@@ -249,6 +247,7 @@ def WriteDubious(outfile,infile,code, station, time):
             of.close()
             flagged=1
     except IOError:
+        # file doesn't exist as yet, so make a new one
         with open(outfile,'w') as of:
             of.write(station+' '+time+' '+code+' variables are first, but not nec. only problem '+infile+'\n')
             of.close()
@@ -259,7 +258,7 @@ def WriteDubious(outfile,infile,code, station, time):
 
 #************************************************************************
 def SortClouds(cloud_cover,cloud_flags, time, amounts, flags, clouds):
-    '''
+    """
     Convert the raw cloud data into oktas for each level
 
     :param array cloud_cover: final cloud_cover array
@@ -268,7 +267,7 @@ def SortClouds(cloud_cover,cloud_flags, time, amounts, flags, clouds):
     :param array amounts: raw cloud amounts - in oktas
     :param array flags: raw cloud flags
     :param array clouds: locations of where cloud heights match this level
-    '''
+    """
 
     if len(clouds)>=1 and cloud_cover[time]==INTMDI:
         cloud_cover[time]=np.max(amounts[clouds])
@@ -278,7 +277,7 @@ def SortClouds(cloud_cover,cloud_flags, time, amounts, flags, clouds):
 
 #************************************************************************
 def SortClouds2(cloud_cover,cloud_flags, time, amounts, amounts2, flags, clouds):
-    '''
+    """
     Convert the raw cloud data into oktas and for each level
 
     :param array cloud_cover: final cloud_cover array
@@ -288,7 +287,7 @@ def SortClouds2(cloud_cover,cloud_flags, time, amounts, amounts2, flags, clouds)
     :param array amounts2: raw cloud amounts - in oktas
     :param array flags: raw cloud flags
     :param array clouds: locations of where cloud heights match this level
-    '''
+    """
 
     inoktas=np.where(np.array(amounts2[clouds]) != INTMDI)[0]
     if len(inoktas)>=1 and cloud_cover[time]==INTMDI:
@@ -302,26 +301,29 @@ def SortClouds2(cloud_cover,cloud_flags, time, amounts, amounts2, flags, clouds)
     return # SortClouds2                         
 
 #************************************************************************
-def WriteAttributes(variable,long_name,missing_value,units,axis,vmin,vmax,standard_name = ''):
-    '''
+def WriteAttributes(variable,long_name,cell_methods,missing_value,units,axis,vmin,vmax,coordinates,standard_name = ''):
+    """
     Write given attributes into ncdf variable
     
     :param object variable: netcdf Variable
     :param string long_name: long_name value for variable to be written
+    :param string cell_methods: cell_methods value for variable to be written
     :param float/int missing_value: missing_value value for variable to be written
     :param string units: units value for variable to be written
     :param string axis: axis value for variable to be written
     :param float/int vmin: valid_min value for variable to be written
     :param float/int vmax: valid_max value for variable to be written
     :param string standard_name: standard_name value for variable to be written
-
-    '''
+    :param string coordinates: coordinates to associate to variable
+    """
     variable.long_name=long_name
+    variable.cell_methods=cell_methods
     variable.missing_value=missing_value
     variable.axis=axis
     variable.units=units
     variable.valid_min=vmin
     variable.valid_max=vmax
+    variable.coordinates=coordinates
     
     if standard_name != '':
         variable.standard_name=standard_name
@@ -330,34 +332,70 @@ def WriteAttributes(variable,long_name,missing_value,units,axis,vmin,vmax,standa
 
 #************************************************************************
 def WriteFlagAttributes(variable,long_name,missing_value,axis):
-    '''
+    """
     Write given attributes into ncdf variable
     
     :param object variable: netcdf Variable
     :param string long_name: long_name value for variable to be written
     :param float/int missing_value: missing_value value for variable to be written
     :param string axis: axis value for variable to be written
-    '''
+    """
     variable.long_name=long_name
     variable.missing_value=missing_value
     variable.units="no_unit"
     variable.axis=axis
 
+    # for future [September 2015]
+    # http://cfconventions.org/Data/cf-conventions/cf-conventions-1.6/build/cf-conventions.html#flags
+
     return # WriteFlagAttributes
 
+#************************************************************************
+def write_coordinates(outfile, short_name, standard_name, long_name, units, axis, data, coordinate_length = 1, do_zip = True):
+    """
+    Write coordinates as variables
+
+    :param str outfile: output netcdf file
+    :param str short_name: netcdf short_name
+    :param str standard_name: netcdf standard_name
+    :param str long_name: netcdf long_name
+    :param str units: netcdf units
+    :param str axis: netcdf axis
+    :param flt data: coordinate 
+    :param int coordinate_length: length of dimension
+    :param bool do_zip: allow for zipping
+    """
+
+
+    if "coordinate_length" not in outfile.dimensions:
+        coord_dim = outfile.createDimension('coordinate_length', coordinate_length)
+
+    nc_var = outfile.createVariable(short_name, np.dtype('float'), ('coordinate_length',), zlib = do_zip)
+    nc_var.standard_name = standard_name
+    nc_var.long_name = long_name
+    nc_var.units = units
+    nc_var.axis = axis
+
+    if short_name == "alt":
+        nc_var.positive = "up"
+
+    nc_var[:] = data
+
+
+    return # write_coordinates
 
 #************************************************************************
 def MakeNetcdfFiles(STARTYEAR, ENDYEAR, restart_id="", end_id="", do_zip = True, Extra=False): 
-    '''
+    """
     Parse the ASCII files and do the NetCDF file creation
 
     :param string restart_id: string for starting station, default=""
     :param string end_id: string for ending station, default=""
     :param boolean do_zip: make netCDF4 files with internal zipping
     :param boolean Extra: setting to extract extra variables
-    '''
+    """
 
-    StationInfo=ReadStations(FILE_LOCS+station_list_filename)
+    StationInfo=ReadStations(INPUT_FILE_LOCS+station_list_filename)
 
     StationIDs=np.array(StationInfo[:,0])
 
@@ -393,7 +431,7 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, restart_id="", end_id="", do_zip = True,
 
     nstations=len(StationIDs)
 
-    Composites=ReadComposites(FILE_LOCS+merger_list_filename)
+    Composites=ReadComposites(INPUT_FILE_LOCS+merger_list_filename)
 
     DaysBetween=dt.datetime(ENDYEAR+1,1,1,0,0)-dt.datetime(STARTYEAR,1,1,0,0)
     HoursBetween=int(DaysBetween.days*24.)
@@ -401,10 +439,10 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, restart_id="", end_id="", do_zip = True,
     TimeStamps=np.linspace(0,HoursBetween-1,HoursBetween) # keep in integer hours
 
     ValidYears=np.linspace(STARTYEAR,ENDYEAR,(ENDYEAR-STARTYEAR+1))
-    dubiousfile=OUTPUT_FILE_DIR+'dubious_ISD_data_files.txt'
+    dubiousfile=LOG_OUTFILE_LOCS+'dubious_ISD_data_files.txt'
 
     # read in Canadian station list
-    Canadian_stations_info = np.genfromtxt(FILE_LOCS + "Canada_time_ranges.dat", dtype=(str), delimiter = [12,20,20])
+    Canadian_stations_info = np.genfromtxt(INPUT_FILE_LOCS + "Canada_time_ranges.dat", dtype=(str), delimiter = [12,20,20])
     Canadian_station_ids = Canadian_stations_info[:,0]
     Canadian_station_start = np.array([dt.datetime.strptime(d.strip(), "%Y-%m-%d %H:%M:%S") for d in Canadian_stations_info[:,1]])
     Canadian_station_end   = np.array([dt.datetime.strptime(d.strip(), "%Y-%m-%d %H:%M:%S") for d in Canadian_stations_info[:,2]])
@@ -547,9 +585,9 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, restart_id="", end_id="", do_zip = True,
         raw_files=[]
         for cstn in consider_these:
             if cstn[0:3] >= '725' and cstn[0:3] <= '729':
-                raw_files.extend(glob.glob(INPUT_DATA_DIR+'station725/'+cstn+'*'))
+                raw_files.extend(glob.glob(ISD_DATA_LOCS+'station725/'+cstn+'*'))
             else:
-                raw_files.extend(glob.glob(INPUT_DATA_DIR+'station'+cstn[0:2]+'s/'+cstn+'*'))
+                raw_files.extend(glob.glob(ISD_DATA_LOCS+'station'+cstn[0:2]+'s/'+cstn+'*'))
 
 
         raw_files.sort()
@@ -955,14 +993,14 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, restart_id="", end_id="", do_zip = True,
                                         if RepresentsInt(cleanline[exists+3]):
                                             if Extract:
 
-                                                ExtractionProcess(precip1_period, precip1_flag,time_loc,INTMDI,'99',cleanline,
-                                                                  exists+3,2, flagoffset=5, doflag=True)
+                                                ExtractionProcess(precip1_period, dummyflag,time_loc,INTMDI,'99',cleanline,
+                                                                  exists+3,2,doflag=False)
 
                                                 if precip1_period[time_loc] < 0:
                                                     precip1_period[time_loc]=INTMDI
 
-                                                ExtractionProcess(precip1_depth, dummyflag,time_loc,FLTMDI,'9999',cleanline,
-                                                                  exists+5,4,doflag=False,divisor=10.)
+                                                ExtractionProcess(precip1_depth, precip1_flag,time_loc,FLTMDI,'9999',cleanline,
+                                                                  exists+5,4,doflag=True,flagoffset=1,divisor=10.)
 
 
                                                 # these two pass in empty strings as missing data test
@@ -1089,21 +1127,24 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, restart_id="", end_id="", do_zip = True,
                                             if RepresentsInt(cleanline[exists+3]):
                                                 if Extract:
 
-                                                    ExtractionProcess(precip2_period, dummyflag,time_loc,INTMDI,'99',cleanline,
+                                                    ExtractionProcess(precip2_period,dummyflag,time_loc,INTMDI,'99',cleanline,
                                                                       exists+3,2,doflag=False)
 
                                                     if precip2_period[time_loc] < 0:
                                                         precip2_period[time_loc]=INTMDI
 
-                                                    ExtractionProcess(precip2_depth,dummyflag,time_loc,FLTMDI,'9999',cleanline,
-                                                                      exists+5,4,doflag=False,divisor=10.)
+                                                    ExtractionProcess(precip2_depth,precip2_flag,time_loc,FLTMDI,'9999',cleanline,
+                                                                      exists+5,4,doflag=True,flagoffset=1,divisor=10.)
 
-                                                    # leave this as is because of separate value and flag tests
-                                                    value,flag=ExtractValues('', cleanline,exists+9,1,'9')
-                                                    if value!='':
-                                                        precip2_condition[time_loc]=value
-                                                    if flag in range(20):
-                                                        precip2_flag[time_loc]=flag
+                                                    ExtractionProcess(precip2_condition, dummyflag,time_loc,'','9',cleanline,
+                                                                      exists+9,1,doflag=False)
+
+                                                    # # leave this as is because of separate value and flag tests
+                                                    # value,flag=ExtractValues('', cleanline,exists+9,1,'9')
+                                                    # if value!='':
+                                                    #     precip2_condition[time_loc]=value
+                                                    # if flag in range(20):
+                                                    #     precip2_flag[time_loc]=flag
 
                                         except IndexError:
                                             if dubious_flagged==0:
@@ -1120,21 +1161,24 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, restart_id="", end_id="", do_zip = True,
                                             if RepresentsInt(cleanline[exists+3]):
                                                 if Extract:
 
-                                                    ExtractionProcess(precip3_period, dummyflag,time_loc,INTMDI,'99',cleanline,
+                                                    ExtractionProcess(precip3_period,dummyflag,time_loc,INTMDI,'99',cleanline,
                                                                       exists+3,2,doflag=False)
 
                                                     if precip3_period[time_loc] < 0:
                                                         precip3_period[time_loc]=INTMDI
 
-                                                    ExtractionProcess(precip3_depth,dummyflag,time_loc,FLTMDI,'9999',cleanline,
-                                                                      exists+5,4,doflag=False,divisor=10.)
+                                                    ExtractionProcess(precip3_depth,precip3_flag,time_loc,FLTMDI,'9999',cleanline,
+                                                                      exists+5,4,doflag=True,flagoffset=1,divisor=10.)
 
-                                                    # leave this as is because of separate value and flag tests
-                                                    value,flag=ExtractValues('', cleanline,exists+9,1,'9')
-                                                    if value!='':
-                                                        precip3_condition[time_loc]=value
-                                                    if flag in range(20):
-                                                        precip3_flag[time_loc]=flag
+                                                    ExtractionProcess(precip3_condition, dummyflag,time_loc,'','9',cleanline,
+                                                                      exists+9,1,doflag=False)
+
+                                                    # # leave this as is because of separate value and flag tests
+                                                    # value,flag=ExtractValues('', cleanline,exists+9,1,'9')
+                                                    # if value!='':
+                                                    #     precip3_condition[time_loc]=value
+                                                    # if flag in range(20):
+                                                    #     precip3_flag[time_loc]=flag
 
                                         except IndexError:
                                             if dubious_flagged==0:
@@ -1144,7 +1188,7 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, restart_id="", end_id="", do_zip = True,
                                     elif dubious_flagged==0:
                                         dubious_flagged=WriteDubious(dubiousfile,rfile,text_ident, station, string_obs_time)
 
-                                    text_ident='AA3'
+                                    text_ident='AA4'
                                     exists=cleanline.find(text_ident)
 
                                     if exists!=-1:
@@ -1152,21 +1196,24 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, restart_id="", end_id="", do_zip = True,
                                             if RepresentsInt(cleanline[exists+3]):
                                                 if Extract:
 
-                                                    ExtractionProcess(precip4_period, dummyflag,time_loc,INTMDI,'99',cleanline,
+                                                    ExtractionProcess(precip4_period,dummyflag,time_loc,INTMDI,'99',cleanline,
                                                                       exists+3,2,doflag=False)
 
                                                     if precip4_period[time_loc] < 0:
                                                         precip4_period[time_loc]=INTMDI
 
-                                                    ExtractionProcess(precip4_depth,dummyflag,time_loc,FLTMDI,'9999',cleanline,
-                                                                      exists+5,4,doflag=False,divisor=10.)
+                                                    ExtractionProcess(precip4_depth,precip4_flag,time_loc,FLTMDI,'9999',cleanline,
+                                                                      exists+5,4,doflag=True,flagoffset=1,divisor=10.)
 
-                                                    # leave this as is because of separate value and flag tests
-                                                    value,flag=ExtractValues('', cleanline,exists+9,1,'9')
-                                                    if value!='':
-                                                        precip4_condition[time_loc]=value
-                                                    if flag in range(20):
-                                                        precip4_flag[time_loc]=flag
+                                                    ExtractionProcess(precip4_condition, dummyflag,time_loc,'','9',cleanline,
+                                                                      exists+9,1,doflag=False)
+
+                                                    # # leave this as is because of separate value and flag tests
+                                                    # value,flag=ExtractValues('', cleanline,exists+9,1,'9')
+                                                    # if value!='':
+                                                    #     precip4_condition[time_loc]=value
+                                                    # if flag in range(20):
+                                                    #     precip4_flag[time_loc]=flag
 
                                         except IndexError:
                                             if dubious_flagged==0:
@@ -1302,7 +1349,7 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, restart_id="", end_id="", do_zip = True,
             minimum_temp_value=minimum_temp_value[mask_vals]
             minimum_temp_flags=minimum_temp_flags[mask_vals]
 
-        netcdf_filename=OUTPUT_DATA_DIR+'/'+station+'.nc'
+        netcdf_filename=NETCDF_DATA_LOCS+'/'+station+'.nc'
 
         if do_zip:
             netcdf_outfile = ncdf.Dataset(netcdf_filename,'w', format='NETCDF4')
@@ -1312,9 +1359,26 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, restart_id="", end_id="", do_zip = True,
         time=netcdf_outfile.createDimension('time',len(times_out))
         char_len=netcdf_outfile.createDimension('character_length',4)
         long_char_len=netcdf_outfile.createDimension('long_character_length',12)
+        coords_len=netcdf_outfile.createDimension('coordinate_length',1)
+
+
+        # write the coordinates
+        write_coordinates(netcdf_outfile, "lat", "latitude", "station_latitude", "degrees_east", "X", StationLat[st])
+        write_coordinates(netcdf_outfile, "lon", "longitude", "station_longitude", "degrees_north", "Y", StationLon[st])
+        write_coordinates(netcdf_outfile, "alt", "height", "vertical distance above the surface", "meters", "Z", StationElv[st])
+
+        # station ID as base variable
+        nc_var = netcdf_outfile.createVariable("station_id", np.dtype('S1'), ('long_character_length',), zlib = do_zip)
+        nc_var.standard_name = "station_identification_code"
+        nc_var.long_name = "Station ID number"
+        nc_var[:] = ncdf.stringtochar(StationIDs[st])
 
         # create variables
         timesvar=netcdf_outfile.createVariable('time','f8',('time',), zlib = do_zip)
+        # lonsvar=netcdf_outfile.createVariable('lon','f8',('coordinate_length',), zlib = do_zip)
+        # latsvar=netcdf_outfile.createVariable('lat','f8',('coordinate_length',), zlib = do_zip)
+        # altsvar=netcdf_outfile.createVariable('alt','f8',('coordinate_length',), zlib = do_zip)
+        # idsvar=netcdf_outfile.createVariable('station_id','S1',('long_character_length',), zlib = do_zip)
         stationsvar=netcdf_outfile.createVariable('input_station_id','S1',('time','long_character_length',), zlib = do_zip)
         tempsvar=netcdf_outfile.createVariable('temperatures','f8',('time',), zlib = do_zip)
         tempsflagsvar=netcdf_outfile.createVariable('temperature_flags','i4',('time',), zlib = do_zip)
@@ -1378,7 +1442,7 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, restart_id="", end_id="", do_zip = True,
         # variables attributes
         print "Writing Attributes"
 
-        timesvar.long_name='time'
+        timesvar.long_name='time_of_measurement'
         timesvar.standard_name='time'
         if hours:
             timesvar.units='hours since {}'.format(dt.datetime.strftime(dt.datetime(STARTYEAR,1,1,0,0), "%Y-%m-%d %H:%M"))
@@ -1387,60 +1451,86 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, restart_id="", end_id="", do_zip = True,
         timesvar.axis='T'
         timesvar.calendar='gregorian'
         timesvar.valid_min=0.
+        timesvar.start_year = "{}".format(STARTYEAR)
+        timesvar.end_year = "{}".format(ENDYEAR)
+        timesvar.start_month = "1"
+        timesvar.end_month = "12"
+        timesvar.coordinates = "time"
+
+        # lonsvar.standard_name = "longitude"
+        # lonsvar.long_name = "station_longitude"
+        # lonsvar.units = "degrees_east"
+        # lonsvar.axis = "X"
+
+        # latsvar.standard_name = "latitude"
+        # latsvar.long_name = "station_latitude"
+        # latsvar.units = "degrees_north"
+        # latsvar.axis = "Y"
+
+        # altsvar.long_name = "vertical distance above the surface"
+        # altsvar.standard_name = "height"
+        # altsvar.units = "meters"
+        # altsvar.positive = "up"
+        # altsvar.axis = "Z"
+        
+        # idsvar.standard_name = "station_identification_code"
+        # idsvar.long_name = "Station ID number"
+        # idsvar.cf_role='timeseries_id'
+
+        stationsvar.standard_name='station_identification_code'
         stationsvar.long_name='Primary source for timestep (may be multiple sources for composite stations)'
         stationsvar.units='USAF - WBAN from ISD source'
-        stationsvar.axis='T'
         stationsvar.missing_value='null'
 
         try:
             tmin,tmax=np.min(temperatures[np.where(temperatures != FLTMDI)[0]]),np.max(temperatures[np.where(temperatures != FLTMDI)[0]])
         except ValueError:
             tmin,tmax=FLTMDI,FLTMDI
-        WriteAttributes(tempsvar,'Dry bulb temperatures nearest to reporting hour',FLTMDI,'Degrees C','T',tmin,tmax,standard_name = 'surface_temperature')
+        WriteAttributes(tempsvar,'Dry bulb air temperature at screen height (~2m)','lat: lon: time: point (nearest to reporting hour)',FLTMDI,'degree_Celsius','T',tmin,tmax,'lat lon alt',standard_name = 'surface_temperature')
         WriteFlagAttributes(tempsflagsvar,'ISD flags for temperature - see ISD documentation',INTMDI,'T')
 
         try:
             dmin,dmax=np.min(dewpoints[np.where(dewpoints != FLTMDI)[0]]),np.max(dewpoints[np.where(dewpoints != FLTMDI)[0]])
         except ValueError:
             dmin,dmax=FLTMDI,FLTMDI
-        WriteAttributes(dewsvar,'Dew point temperatures nearest to reporting hour',FLTMDI,'Degrees C','T',dmin,dmax, standard_name =  'dew_point_temperature')
+        WriteAttributes(dewsvar,'Dew point temperature at screen height (~2m)','lat: lon: time: point (nearest to reporting hour',FLTMDI,'degree_Celsius','T',dmin,dmax,'lat lon alt',standard_name =  'dew_point_temperature')
         WriteFlagAttributes(dewsflagsvar,'ISD flags for dewpoint temperature - see ISD documentation',INTMDI,'T')
 
-        WriteAttributes(tcvar,'Total cloud cover (oktas) derived in priority order GA, GF, GD - see ISD documentation', INTMDI, '1', 'T', 0,8, standard_name = "cloud_area_fraction")
+        WriteAttributes(tcvar,'Total cloud cover (oktas)','lat: lon: time: point (derived in priority order GA, GF, GD - see ISD documentation, nearest to reporting hour)', INTMDI, '1', 'T', 0,8, 'lat lon alt',standard_name = "cloud_area_fraction")
         WriteFlagAttributes(tcfvar,'ISD flags for total cloud - see ISD documentation',INTMDI,'T')
 
-        WriteAttributes(lcvar,'Low cloud cover (oktas) derived in priority order GA, GF, GD - see ISD documentation', INTMDI, '1', 'T', 0,8, standard_name = "low_type_cloud_area_fraction")
+        WriteAttributes(lcvar,'Low cloud cover (oktas)','lat: lon: time: point (derived in priority order GA, GF, GD - see ISD documentation, nearest to reporting hour)', INTMDI, '1', 'T', 0,8, 'lat lon alt',standard_name = "low_type_cloud_area_fraction")
         WriteFlagAttributes(lcfvar,'ISD flags for low cloud - see ISD documentation',INTMDI,'T')
 
-        WriteAttributes(mcvar,'Mid cloud cover (oktas) derived in priority order GA, GF, GD - see ISD documentation', INTMDI, '1', 'T', 0,8, standard_name = "medium_type_cloud_area_fraction")
+        WriteAttributes(mcvar,'Mid cloud cover (oktas)','lat: lon: time: point (derived in priority order GA, GF, GD - see ISD documentation, nearest to reporting hour)', INTMDI, '1', 'T', 0,8, 'lat lon alt',standard_name = "medium_type_cloud_area_fraction")
         WriteFlagAttributes(mcfvar,'ISD flags for mid cloud - see ISD documentation',INTMDI,'T')
 
-        WriteAttributes(hcvar,'High cloud cover (oktas) derived in priority order GA, GF, GD - see ISD documentation', INTMDI, '1', 'T', 0,8, standard_name = "high_type_cloud_area_fraction")
+        WriteAttributes(hcvar,'High cloud cover (oktas)','lat: lon: time: point (derived in priority order GA, GF, GD - see ISD documentation, nearest to reporting hour)', INTMDI, '1', 'T', 0,8, 'lat lon alt',standard_name = "high_type_cloud_area_fraction")
         WriteFlagAttributes(hcfvar,'ISD flags for high cloud - see ISD documentation',INTMDI,'T')
 
         try:
             cbmin,cbmax=np.min(cloud_base[np.where(cloud_base != INTMDI)[0]]),np.max(cloud_base[np.where(cloud_base != INTMDI)[0]])
         except ValueError:
             cbmin,cbmax=FLTMDI,FLTMDI
-        WriteAttributes(cbvar,'Cloud base of lowest cloud layer nearest to reporting hour', INTMDI, 'meters', 'T', cbmin, cbmax, standard_name = 'cloud_base_altitude')
+        WriteAttributes(cbvar,'Cloud base of lowest cloud layer','lat: lon: time: point (nearest to reporting hour', INTMDI, 'meters', 'T', cbmin, cbmax, 'lat lon alt',standard_name = 'cloud_base_altitude')
         WriteFlagAttributes(cbfvar,'ISD flags for cloud base - see ISD documentation',INTMDI,'T')
 
         try:
             wsmin,wsmax=np.min(windspeeds[np.where(windspeeds != FLTMDI)[0]]),np.max(windspeeds[np.where(windspeeds != FLTMDI)[0]])
         except ValueError:
             wsmin,wsmax=FLTMDI,FLTMDI
-        WriteAttributes(wsvar,'Wind speed', FLTMDI, 'meters per second', 'T', wsmin, wsmax,standard_name = 'wind_speed')
+        WriteAttributes(wsvar,'Wind speed at mast height (~10m)','lat: lon: time: point (nearest to reporting hour)', FLTMDI, 'meters per second', 'T', wsmin, wsmax,'lat lon alt',standard_name = 'wind_speed')
         WriteFlagAttributes(wsfvar,'ISD flags for windspeed - see ISD documentation',INTMDI,'T')
 
-        WriteAttributes(wdvar,'Wind Direction', INTMDI, 'Degrees', 'T', 0, 360, standard_name = 'wind_from_direction')
+        WriteAttributes(wdvar,'Wind Direction at mast height (~10m)','lat: lon: time: point (nearest to reporting hour)', INTMDI, 'degree', 'T', 0, 360, 'lat lon alt',standard_name = 'wind_from_direction')
         WriteFlagAttributes(wdfvar,'ISD flags for wind direction - see ISD documentation',INTMDI,'T')
 
-        WriteAttributes(pswx1var,'Station reports of past significant weather phenomena', INTMDI, '1', 'T', 0, 9)
+        WriteAttributes(pswx1var,'Reported past significant weather phenomena','lat: lon: point (interval: 1 day)', INTMDI, '1', 'T', 0, 9,'lat lon alt')
         WriteFlagAttributes(pswx1fvar,'ISD flags for reported past significant weather - see ISD documentation',INTMDI,'T')
-        WriteAttributes(pswx1pvar,'Period of significant weather report', INTMDI, 'Hours', 'T', 0, 24)
+        WriteAttributes(pswx1pvar,'Reported period over which significant weather report was recorded','lat: lon: point (interval: 1 day)', INTMDI, 'Hours', 'T', 0, 24,'lat lon alt')
 
-        WriteAttributes(ppt1pvar,'Period of Precipitation Report', INTMDI, 'Hours', 'T', 0, 98)
-        WriteAttributes(ppt1dvar,'Depth of Precipitation Reported', FLTMDI, 'mm', 'T', 0, 999.8, standard_name = 'lwe_thickness_of_precipitation_amount')
+        WriteAttributes(ppt1pvar,'Reported period over which precipitation was recorded','(as ISD variable precip1)', INTMDI, 'hour', 'T', 0, 98,'lat lon alt precip1_depth', standard_name = 'period_of_precipitation_report')
+        WriteAttributes(ppt1dvar,'Depth of Precipitation Reported over time period','lat: lon: point precip1_period: sum (as ISD variable precip1)', FLTMDI, 'mm', 'T', 0, 999.8,'lat lon alt precip1_period', standard_name = 'lwe_thickness_of_precipitation_amount')
         WriteFlagAttributes(ppt1cvar,'Precipitation Code (denotes if trace amount)', 'null','T')
         WriteFlagAttributes(ppt1fvar,'ISD flags for first precip field - see ISD documentation', INTMDI,'T')
         ppt1cvar.units='no_unit'
@@ -1449,39 +1539,40 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, restart_id="", end_id="", do_zip = True,
             smin,smax=np.min(slp[np.where(slp != FLTMDI)[0]]),np.max(slp[np.where(slp != FLTMDI)[0]])
         except ValueError:
             smin,smax=FLTMDI,FLTMDI
-        WriteAttributes(slpvar,'Reported Sea Level Pressure',FLTMDI, 'hPa', 'T', smin, smax, standard_name = 'air_pressure_at_sea_level')
+        WriteAttributes(slpvar,'Reported Sea Level Pressure at screen height (~2m)','lat: lon: time: point (nearest to reporting hour)',FLTMDI, 'hPa', 'T', smin, smax, 'lat lon alt',standard_name = 'air_pressure_at_sea_level')
         WriteFlagAttributes(slpfvar,'ISD flags for slp field - see ISD documentation',INTMDI,'T')
 
-        WriteAttributes(sdvar,'Reported Sunshine Duration', INTMDI, 'minutes', 'T', 0, 6000, standard_name = 'duration_of_sunshine')
+        WriteAttributes(sdvar,'Reported Sunshine Duration','lat: lon: time: point (nearest to reporting hour)', INTMDI, 'minutes', 'T', 0, 6000, 'lat lon alt', standard_name = 'duration_of_sunshine')
         WriteFlagAttributes(sdfvar,'ISD flags sun duration field - see ISD documentation',INTMDI,'T')
 
-        WriteAttributes(wgstpvar,'Period of Maximum Wind Gust Speed', INTMDI, 'Hours', 'T', 0, 48)
-        WriteAttributes(wgstvvar,'Maximum Wind Gust Speed Reported',FLTMDI, 'meters per second', 'T', 0, 200.0, standard_name = 'wind_speed_of_gust')
+        WriteAttributes(wgstpvar,'Period of Maximum Wind Gust Speed', 'lat: lon: time: point (nearest to reporting hour)', INTMDI, 'Hours', 'T', 0, 48, 'lat lon alt',standard_name = 'period_of_wind_gust')
+        WriteAttributes(wgstvvar,'Wind Gust Speed at mast height (~10m)','lat: lon: time: point (nearest to reporting hour)',FLTMDI, 'meters per second', 'T', 0, 200.0, 'lat lon alt',standard_name = 'wind_speed_of_gust')
         WriteFlagAttributes(wgstfvar,'ISD flags for wind gust field - see ISD documentation', INTMDI,'T')
+
         if Extra:
             WriteFlagAttributes(wtvar,'Wind observation type - see ISD documentation','null','T')
 
-            WriteAttributes(pswx2var,'Station reports of past significant weather phenomena (2)', INTMDI, 'no_unit', 'T', 0, 9)
+            WriteAttributes(pswx2var,'Station reports of past significant weather phenomena (2)','lat: lon: point (interval: 1 day)', INTMDI, 'no_unit', 'T', 0, 9,'lat lon alt')
             WriteFlagAttributes(pswx2fvar,'ISD flags for reported past significant weather - see ISD documentation',INTMDI,'T')
-            WriteAttributes(pswx2pvar,'Period of significant weather report', INTMDI, 'Hours', 'T', 0, 24)
+            WriteAttributes(pswx2pvar,'Period of significant weather report','lat: lon: point (interval: 1 day)', INTMDI, 'hour', 'T', 0, 24,'lat lon alt')
 
-            WriteAttributes(swxvar,'Station reports of present significant weather phenomena', INTMDI, 'no_unit', 'T', 0, 99)
+            WriteAttributes(swxvar,'Station reports of present significant weather phenomena','lat: lon: point (interval: 1 day)', INTMDI, 'no_unit', 'T', 0, 99,'lat lon alt')
             WriteFlagAttributes(swxfvar,'ISD flags for reported present significant weather - see ISD documentation',INTMDI,'T')
 
-            WriteAttributes(ppt2pvar,'Period of Precipitation Report', INTMDI, 'Hours', 'T', 0, 98)
-            WriteAttributes(ppt2dvar,'Depth of Precipitation Reported', FLTMDI, 'mm', 'T', 0, 999.8)
+            WriteAttributes(ppt2pvar,'Reported period over which precipitation was recorded','(as ISD variable precip2)', INTMDI, 'hour', 'T', 0, 98,'lat lon alt precip2_depth')
+            WriteAttributes(ppt2dvar,'Depth of Precipitation Reported over time period','lat: lon: point precip2_period: sum (as ISD variable precip2)', FLTMDI, 'mm', 'T', 0, 999.8,'lat lon alt precip2_period')
             WriteFlagAttributes(ppt2cvar,'Denotes if trace amount', 'null','T')
             WriteFlagAttributes(ppt2fvar,'ISD flags for second precip field - see ISD documentation', INTMDI,'T')
             ppt2cvar.units='no_unit'
 
-            WriteAttributes(ppt3pvar,'Period of Precipitation Report', INTMDI, 'Hours', 'T', 0, 98)
-            WriteAttributes(ppt3dvar,'Depth of Precipitation Reported', FLTMDI, 'mm', 'T', 0, 999.8)
+            WriteAttributes(ppt3pvar,'Reported period over which precipitation was recorded','(as ISD variable precip3)', INTMDI, 'hour', 'T', 0, 98,'lat lon alt precip3_depth')
+            WriteAttributes(ppt3dvar,'Depth of Precipitation Reported over time period','lat: lon: point precip3_period: sum (as ISD variable precip3)', FLTMDI, 'mm', 'T', 0, 999.8,'lat lon alt precip3_period')
             WriteFlagAttributes(ppt3cvar,'Denotes if trace amount', 'null','T')
             WriteFlagAttributes(ppt3fvar,'ISD flags for third precip field - see ISD documentation', INTMDI,'T')
             ppt3cvar.units='no_unit'
 
-            WriteAttributes(ppt4pvar,'Period of Precipitation Report', INTMDI, 'Hours', 'T', 0, 98)
-            WriteAttributes(ppt4dvar,'Depth of Precipitation Reported', FLTMDI, 'mm', 'T', 0, 999.8)
+            WriteAttributes(ppt4pvar,'Reported period over which precipitation was recorded','(as ISD variable precip4)', INTMDI, 'hour', 'T', 0, 98,'lat lon alt precip4_depth')
+            WriteAttributes(ppt4dvar,'Depth of Precipitation Reported over time period','lat: lon: point precip4_period: sum (as ISD variable precip4)', FLTMDI, 'mm', 'T', 0, 999.8,'lat lon alt precip4_period')
             WriteFlagAttributes(ppt4cvar,'Denotes if trace amount', 'null','T')
             WriteFlagAttributes(ppt4fvar,'ISD flags for fourth precip field - see ISD documentation', INTMDI,'T')
             ppt4cvar.units='no_unit'
@@ -1490,8 +1581,8 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, restart_id="", end_id="", do_zip = True,
                 xtmin,xtmax=np.min(maximum_temp_value[np.where(maximum_temp_value != FLTMDI)[0]]),np.max(maximum_temp_value[np.where(maximum_temp_value != FLTMDI)[0]])
             except ValueError:
                 xtmin,xtmax=FLTMDI,FLTMDI
-            WriteAttributes(maxtpvar,'Period of maximum temperature report', FLTMDI, 'Hours', 'T', 0, 48)
-            WriteAttributes(maxtvvar,'Reported dry bulb maximum temperature', FLTMDI,'Degrees C','T',xtmin,xtmax)
+            WriteAttributes(maxtpvar,'Reported period over which maximum temperature was recorded','lat: lon: point (interval: 1 day)', FLTMDI, 'hour', 'T', 0, 48,'lat lon alt')
+            WriteAttributes(maxtvvar,'Dry bulb maximum temperature reported over time period','lat: lon: time: point (interval: 1 day)', FLTMDI,'degrees_Celsius','T',xtmin,xtmax)
             WriteFlagAttributes(maxtfvar,'ISD flags for maximum temperature field - see ISD documentation', INTMDI, 'T')
 
 
@@ -1499,8 +1590,8 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, restart_id="", end_id="", do_zip = True,
                 ntmin,ntmax=np.min(minimum_temp_value[np.where(minimum_temp_value != FLTMDI)[0]]),np.max(minimum_temp_value[np.where(minimum_temp_value != FLTMDI)[0]])
             except ValueError:
                 ntmin,ntmax=FLTMDI,FLTMDI
-            WriteAttributes(mintpvar,'Period of minimum temperature report', FLTMDI, 'Hours', 'T', 0, 48)
-            WriteAttributes(mintvvar,'Reported dry bulb minimum temperature', FLTMDI,'Degrees C','T',ntmin,ntmax)
+            WriteAttributes(mintpvar,'Reported period over which minimum temperature was recorded','lat: lon: point (interval: 1 day)', FLTMDI, 'hour', 'T', 0, 48,'lat lon alt')
+            WriteAttributes(mintvvar,'Dry bulb minimum temperature reported over time period','lat: lon: time: point (interval: 1 day)', FLTMDI,'degree_Celsius','T',ntmin,ntmax)
             WriteFlagAttributes(mintfvar,'ISD flags for minimum temperature field - see ISD documentation', INTMDI, 'T')
 
 
@@ -1525,6 +1616,10 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, restart_id="", end_id="", do_zip = True,
 
 
         timesvar[:]=times_out
+#        lonsvar[:]=StationLon[st]
+#        latsvar[:]=StationLat[st]
+#        altsvar[:]=StationElv[st]
+#        idsvar[:]=StationIDs[st]
         stationsvar[:]=ncdf.stringtochar(input_station_id)
         tempsvar[:]=temperatures
         tempsflagsvar[:]=temperature_flags
@@ -1604,7 +1699,7 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, restart_id="", end_id="", do_zip = True,
 
 if __name__=="__main__":
 
-    '''
+    """
     Calls creation of netCDF files.  
 
     Uses sys.argv to input parameters - positional
@@ -1612,7 +1707,7 @@ if __name__=="__main__":
     restart_id, end_id, extra
 
     Use direct call to test, and hard code the station ID here
-    '''
+    """
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--start', dest='STARTYEAR', action='store', default = 1931,
@@ -1634,8 +1729,8 @@ if __name__=="__main__":
     end_id=args.end_id
     Extra=args.extra
 
-    print "Reading data from %s" % INPUT_DATA_DIR
-    print "Writing data to %s" % OUTPUT_DATA_DIR
+    print "Reading data from %s" % ISD_DATA_LOCS
+    print "Writing data to %s" % NETCDF_DATA_LOCS
     print "Start year %i, End year %i (inclusive)" % (STARTYEAR,ENDYEAR)
     print "Restart ID = {}, End ID = {}, Include Extra parameters = {}".format(restart_id, end_id, Extra)
   

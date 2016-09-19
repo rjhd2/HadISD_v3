@@ -6,9 +6,9 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 72                                            $:  Revision of last commit
+#$Rev:: 107                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2015-05-20 15:21:59 +0100 (Wed, 20 May 2015) $:  Date of last commit
+#$Date:: 2016-07-29 15:38:24 +0100 (Fri, 29 Jul 2016) $:  Date of last commit
 #************************************************************************
 
 import numpy as np
@@ -267,8 +267,8 @@ def get_station_level_pressure(station):
     :returns: station level pressure (hPa)
     '''
 
-    slp = getattr(station, "slp")
-    temperatures = getattr(station, "temperatures")
+    slp = utils.apply_flags_to_mask(station, "slp")
+    temperatures = utils.apply_flags_to_mask(station, "temperatures")
 
     t_in_kelvin = temperatures.data + 273.15
 
@@ -280,20 +280,21 @@ def get_station_level_pressure(station):
 
 
 #************************************************************************
-def run_calcs(station):
+def run_calcs(station, logfile, plots = False, diagnostics = False):
     '''
     Run the humidity calculations and add the attributes to the station file
 
     :param object station: station object
+    :param file logfile: logfile to store outputs
+    :param boolean diagnostics: output diagnostic information
+    :param boolean plots: make a plot
 
     :returns: station - updated with humidity variables
     '''
 
-
-
-    temperatures = getattr(station, "temperatures")
-    dewpoints = getattr(station, "dewpoints")
-    
+    temperatures = utils.apply_flags_to_mask(station, "temperatures")
+    dewpoints = utils.apply_flags_to_mask(station, "dewpoints")
+   
     # adjust from sea-level to station-level
     station_pressure = get_station_level_pressure(station)
     
@@ -313,6 +314,11 @@ def run_calcs(station):
     q.data = calculate_q(e_v.data, station_pressure)
     rh.data = calculate_rh(e_v.data, e_s.data)
     
+    if plots or diagnostics:
+        print "Humidity variables calculated, setting attributes\n"
+    else:
+        logfile.write("Humidity variables calculated, setting attributes\n")
+
     setattr(station, "vapour_pressure", e_v)
     setattr(station, "saturation_vapour_pressure", e_s)
     setattr(station, "wetbulb_temperature", Tw)

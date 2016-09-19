@@ -8,7 +8,7 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 64                                            $:  Revision of last commit
+#$Rev:: 104                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
 #$Date:: 2014-12-01 16:20:58 +0000 (Mon, 01 Dec 2014) $:  Date of last commit
 #************************************************************************
@@ -254,138 +254,139 @@ def wind_rose_check(station, flag_col, start, end, logfile, plots = False, diagn
             rmse.mask[y] = True
 
     # now to bin up the differences and see what the fit is.
+    # need to have values spread so can bin!
+    if len(np.unique(rmse.compressed())) > 1:
+        binEdges, bincenters = wind_create_bins(rmse)
+        hist, binEdges = np.histogram(rmse,  bins = binEdges)#, density=True)
 
-    binEdges, bincenters = wind_create_bins(rmse)
-    hist, binEdges = np.histogram(rmse,  bins = binEdges)#, density=True)
-    
-    norm = get_histogram_norm(rmse, binEdges)
+        norm = get_histogram_norm(rmse, binEdges)
 
-    # inputs for fit
-    mu = np.mean(rmse)
-    std = np.std(rmse)
+        # inputs for fit
+        mu = np.mean(rmse)
+        std = np.std(rmse)
 
+        # try to get decent fit to bulk of obs.
+    #    initial_values = [np.max(hist), np.mean(rmse), np.std(rmse), stats.skew(rmse), stats.kurtosis(rmse)] # norm, mean, std, sk#ew, kurtosis
+    #    fit = leastsq(utils.residualsGH, initial_values, [bincenters, hist, np.ones(len(hist))])
+    #    res = utils.hermite2gauss(fit[0])
+    #    plot_gaussian = utils.funcGH(fit[0], bincenters)
 
-    # try to get decent fit to bulk of obs.
-#    initial_values = [np.max(hist), np.mean(rmse), np.std(rmse), stats.skew(rmse), stats.kurtosis(rmse)] # norm, mean, std, sk#ew, kurtosis
-#    fit = leastsq(utils.residualsGH, initial_values, [bincenters, hist, np.ones(len(hist))])
-#    res = utils.hermite2gauss(fit[0])
-#    plot_gaussian = utils.funcGH(fit[0], bincenters)
+        fit = stats.rice.fit(rmse.compressed(), loc = 0, scale = np.ma.std(rmse))
+        dist_pdf = stats.rice.pdf(bincenters, fit[:-2], loc=fit[-2], scale=fit[-1]) * norm
 
+        gaussian = utils.fit_gaussian(bincenters, hist, max(hist), mu = mu, sig = std)
 
-    fit = stats.rice.fit(rmse.compressed(), loc = 0, scale = np.ma.std(rmse))
-    dist_pdf = stats.rice.pdf(bincenters, fit[:-2], loc=fit[-2], scale=fit[-1]) * norm
-    
-    gaussian = utils.fit_gaussian(bincenters, hist, max(hist), mu = mu, sig = std)
+        # invert Gaussian to find initial threshold, then hunt for first gap beyond
+        # threshold = utils.invert_gaussian(PROB_THRESHOLD, gaussian)
 
-    # invert Gaussian to find initial threshold, then hunt for first gap beyond
-    # threshold = utils.invert_gaussian(PROB_THRESHOLD, gaussian)
+        # invert Rician to find initial threshold, then hunt for first gap beyond
+        if dist_pdf[-1] < PROB_THRESHOLD:
+            # then curve has dropped below the threshold, so can find some updated ones.
+            threshold = -np.where(dist_pdf[::-1] > PROB_THRESHOLD)[0][0]
+        else:
+            threshold = bincenters[-1]
 
-    # invert Rician to find initial threshold, then hunt for first gap beyond
-    if dist_pdf[-1] < PROB_THRESHOLD:
-        # then curve has dropped below the threshold, so can find some updated ones.
-        threshold = -np.where(dist_pdf[::-1] > PROB_THRESHOLD)[0][0]
-    else:
-        threshold = bincenters[-1]
+        n = 0
+        center = np.argmax(hist)
+        gap = bincenters[-1] # nothing should be beyond this
 
-    n = 0
-    center = np.argmax(hist)
-    gap = bincenters[-1] # nothing should be beyond this
+        while True:
+            if center + n + 1 == len(bincenters): 
+                # gone beyond edge - nothing to flag, so just break
+                break
 
-    while True:
-        if center + n + 1 == len(bincenters): 
-            # gone beyond edge - nothing to flag, so just break
-            break
-        
-        if bincenters[center + n] < threshold:
+            if bincenters[center + n] < threshold:
+                n += 1
+                # continue moving outwards
+                continue
+
+            if hist[center + n] == 0:
+                # found one
+                if center + n + 1 == len(bincenters):
+                    # gone beyond edge - nothing to flag - escape
+                    break
+                elif hist[center + n + 1] == 0:
+                    # has to be two bins wide?
+                    gap = bincenters[center + n]
+                    break
             n += 1
-            # continue moving outwards
-            continue
 
-        if hist[center + n] == 0:
-            # found one
-            if center + n + 1 == len(bincenters):
-                # gone beyond edge - nothing to flag - escape
-                break
-            elif hist[center + n + 1] == 0:
-                # has to be two bins wide?
-                gap = bincenters[center + n]
-                break
-        n += 1
-
-    # run through each year to extract RMSE's
-    for y,year in enumerate(month_ranges_years):
-
-            if rmse[y] > gap:
-
-                # only flag where there are observations
-                good, = np.where(np.logical_or(direction.mask[year[0][0]:year[-1][0]] == False, speed.mask[year[0][0]:year[-1][0]] == False))
-
-                flags[year[0][0]:year[-1][0]][good] = 1
-                
-                if diagnostics or plots:
-                    print "Flagging {}  RMSE {} > {}".format(y+start.year, rmse[y], gap)
-            elif rmse.mask[y] == False: 
-                if diagnostics or plots:
-                    print "{}".format(y+start.year)
-                    
-
-    
-    if plots:
-        import matplotlib.pyplot as plt
-        # plot underlying histogram
-        plt.clf()
-        plot_hist = np.array([float(x) if x != 0 else 1e-1 for x in hist])
-        plt.step(binEdges[1:], plot_hist, color = 'k')
-
-        # plot the Rician distribution on top
-        plt.plot(bincenters, dist_pdf, "r-", label = "Rician") 
-
-        # plot the gaussian on top
-        plt.plot(binEdges[1:], utils.gaussian(bincenters, gaussian), color = 'b', ls = ":", label = "Gaussian")
-        plt.yscale("log")
-        plt.ylim([0.001, 2*max(plot_hist)])
-
-        # plot the thresholds
-        plt.axvline(threshold, color = 'g')
-        plt.axvline(gap, color = 'r')
-
-        # plot flagged values in different colour
-        if len(rmse[rmse > gap]) > 0:
-            plt.step(binEdges[1:][bincenters >= gap], plot_hist[bincenters >= gap], color = 'r')
-
-        # prettify
-        plt.xlabel("RMSE between complete record and each year")
-        plt.ylabel("Frequency")
-        plt.title(station.id + " annual wind rose differences")
-        plt.xlim([0, 1.1*np.ma.max(rmse)])
-        plt.legend(loc = "lower right", frameon = False)
-
-        plt.show()
-
-
-        # plot all the annual wind roses, flattened out.
-
-        plt.clf()
-        
-        hist, binEdges = np.histogram(direction,  bins = np.arange(0.0,360.+DEGREEBINS,DEGREEBINS), normed = True) 
-        bincenters = (binEdges[:-1] + binEdges[1:])/2.
-        plt.plot(bincenters, hist, "k-", lw = 2)
-        
+        # run through each year to extract RMSE's
         for y,year in enumerate(month_ranges_years):
-            if len(speed[year[0][0]:year[-1][0]].compressed() > 0):
-                hist, binEdges = np.histogram(direction[year[0][0]:year[-1][0]],  bins = binEdges, normed = True) 
-                plt.plot(bincenters, hist)
 
-        plt.xlabel("Direction (degrees)")
-        plt.show()
+                if rmse[y] > gap:
 
-        # plot wind roses as wind roses
+                    # only flag where there are observations
+                    good, = np.where(np.logical_or(direction.mask[year[0][0]:year[-1][0]] == False, speed.mask[year[0][0]:year[-1][0]] == False))
 
-        plot_wind_rose(speed, direction, "{} - {}".format(station.id, "all years"))
+                    flags[year[0][0]:year[-1][0]][good] = 1
 
-        for y,year in enumerate(month_ranges_years):
-            if len(speed[year[0][0]:year[-1][0]].compressed() > 0):
-                plot_wind_rose(speed[year[0][0]:year[-1][0]], direction[year[0][0]:year[-1][0]], "{} - {}".format(station.id, start.year + y), label = "RMSE {:6.4f}\nThreshold {:6.4f}".format(rmse[y], gap))
+                    if diagnostics or plots:
+                        print "Flagging {}  RMSE {} > {}".format(y+start.year, rmse[y], gap)
+                elif rmse.mask[y] == False: 
+                    if diagnostics or plots:
+                        print "{}".format(y+start.year)
+
+
+
+        if plots:
+            import matplotlib.pyplot as plt
+            # plot underlying histogram
+            plt.clf()
+            plot_hist = np.array([float(x) if x != 0 else 1e-1 for x in hist])
+            plt.step(binEdges[1:], plot_hist, color = 'k')
+
+            # plot the Rician distribution on top
+            plt.plot(bincenters, dist_pdf, "r-", label = "Rician") 
+
+            # plot the gaussian on top
+            plt.plot(binEdges[1:], utils.gaussian(bincenters, gaussian), color = 'b', ls = ":", label = "Gaussian")
+            plt.yscale("log")
+            plt.ylim([0.001, 2*max(plot_hist)])
+
+            # plot the thresholds
+            plt.axvline(threshold, color = 'g')
+            plt.axvline(gap, color = 'r')
+
+            # plot flagged values in different colour
+            if len(rmse[rmse > gap]) > 0:
+                plt.step(binEdges[1:][bincenters >= gap], plot_hist[bincenters >= gap], color = 'r')
+
+            # prettify
+            plt.xlabel("RMSE between complete record and each year")
+            plt.ylabel("Frequency")
+            plt.title(station.id + " annual wind rose differences")
+            plt.xlim([0, 1.1*np.ma.max(rmse)])
+            plt.legend(loc = "lower right", frameon = False)
+
+            plt.show()
+
+
+            # plot all the annual wind roses, flattened out.
+
+            plt.clf()
+
+            hist, binEdges = np.histogram(direction,  bins = np.arange(0.0,360.+DEGREEBINS,DEGREEBINS), normed = True) 
+            bincenters = (binEdges[:-1] + binEdges[1:])/2.
+            plt.plot(bincenters, hist, "k-", lw = 2)
+
+            for y,year in enumerate(month_ranges_years):
+                if len(speed[year[0][0]:year[-1][0]].compressed() > 0):
+                    hist, binEdges = np.histogram(direction[year[0][0]:year[-1][0]],  bins = binEdges, normed = True) 
+                    plt.plot(bincenters, hist)
+
+            plt.xlabel("Direction (degrees)")
+            plt.show()
+
+            # plot wind roses as wind roses
+
+            plot_wind_rose(speed, direction, "{} - {}".format(station.id, "all years"))
+
+            for y,year in enumerate(month_ranges_years):
+                if len(speed[year[0][0]:year[-1][0]].compressed() > 0):
+                    plot_wind_rose(speed[year[0][0]:year[-1][0]], direction[year[0][0]:year[-1][0]], "{} - {}".format(station.id, start.year + y), label = "RMSE {:6.4f}\nThreshold {:6.4f}".format(rmse[y], gap))
+
+    # and apply the flags and output text
 
     flag_locs, = np.where(flags != 0)
     if plots or diagnostics:

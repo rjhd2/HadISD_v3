@@ -6,9 +6,9 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 76                                            $:  Revision of last commit
+#$Rev:: 108                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2015-06-15 19:03:14 +0100 (Mon, 15 Jun 2015) $:  Date of last commit
+#$Date:: 2016-09-19 13:56:07 +0100 (Mon, 19 Sep 2016) $:  Date of last commit
 #************************************************************************
 
 import numpy as np
@@ -20,30 +20,27 @@ import subprocess
 import time
 
 # RJHD utilities
-import netcdf_procs as ncdf
+import netcdf_procs as ncdfp
 import qc_utils as utils
 import humidity_vars as humidity
 import heat_stress as heat_stress
+from set_paths_and_vars import *
 
 
-DATASTART = dt.datetime(1931,1,1,0,0)
-DATAEND = dt.datetime(2015,1,1,0,0)
-
-FILE_LOCS = "/project/hadobs2/hadisd/v200_2014/code_v200_2014/input_files/"
-DATA_LOCS = "/project/hadobs2/hadisd/v200_2014/netcdf_files_v200_2014/"
-OUTFILE_LOCS = "/project/hadobs2/hadisd/v200_2014/suppl_files_v200_2014/"
-
-
-process_vars = ["temperatures","dewpoints","slp","windspeeds","input_station_id"]
-
-
-
+#************************************************************************
 def make_hum_heat_vars(station_info, restart_id = "", end_id = "", diagnostics = False, plots = False):
-    '''
-    
+    """
+    Make the humidity and heat-stress variable netCDF files
 
+    Make two sets of output files containing the humidity and heat-stress
+    parameters calculated on an hourly basis from the QC'd HadISD data
 
-    '''
+    :param list station_info: station information list
+    :param str restart_id: first station to process
+    :param str end_id: last station to process
+    :param bool diagnostics: verbose output to screen
+    :param bool plots: make plots (placeholder)
+    """
 
 
     # sort truncated run
@@ -67,23 +64,31 @@ def make_hum_heat_vars(station_info, restart_id = "", end_id = "", diagnostics =
         print "{:35s} {:d}/{:d}".format("Station Number : ", st + 1, len(station_info))
         print "{:35s} {}".format("Station Identifier :", stat[0])
 
+        if plots or diagnostics:
+            logfile = ""
+        else:
+            logfile = file(LOG_OUTFILE_LOCS+stat[0]+'.log','a') 
+            logfile.write(dt.datetime.strftime(dt.datetime.now(), "%A, %d %B %Y, %H:%M:%S\n"))
+            logfile.write("Calculating Humidity and Heat Stress variables\n")
+            logfile.write("{:35s} {}\n".format("Station Identifier :", stat[0]))
+        process_start_time = time.time()
 
 
         station = utils.Station(stat[0], float(stat[1]), float(stat[2]), float(stat[3]))
-        if os.path.exists(os.path.join(DATA_LOCS, station.id + "_mask.nc.gz")):
+        if os.path.exists(os.path.join(NETCDF_DATA_LOCS, station.id + "_mask.nc.gz")):
             # if gzip file, unzip here
-            subprocess.call(["gunzip",os.path.join(DATA_LOCS, station.id + "_mask.nc.gz")])
+            subprocess.call(["gunzip",os.path.join(NETCDF_DATA_LOCS, station.id + "_mask.nc.gz")])
             time.sleep(5) # make sure it is unzipped before proceeding
 
         # read in the data
-        ncdf.read(os.path.join(DATA_LOCS, station.id + "_mask.nc"), station, process_vars, diagnostics = diagnostics, read_qc_flags = False, read_flagged_obs = False)
+        ncdfp.read(os.path.join(NETCDF_DATA_LOCS, station.id + "_mask.nc"), station, process_vars, diagnostics = diagnostics, read_qc_flags = False, read_flagged_obs = False)
 
         match_to_compress = utils.create_fulltimes(station, process_vars, DATASTART, DATAEND, do_qc_flags = False, do_flagged_obs = False)
 
         # run through calculations, each one should add a new variable to object.
 
 
-        '''
+        """
         1) Use T and P to get e  [to get es, use Td]
         2) Use e, P, Td and T to get Tw
         3) If Tw < 0C, recalculate e w.r.t ice, and re-obtain Tw - keep both!
@@ -91,27 +96,33 @@ def make_hum_heat_vars(station_info, restart_id = "", end_id = "", diagnostics =
         5) Use e and es to get rh (use appropriate es too) - or q and qs
 
         what P to use if no measurement - using monthly mean probably isn't appropriate in this instance??
-        '''
+        """
 
-        station = humidity.run_calcs(station)
+        station = humidity.run_calcs(station, logfile)
         
         # run through heat stress calculations
 
-        station = heat_stress.run_calcs(station)
+        station = heat_stress.run_calcs(station, logfile)
 
         if diagnostics or plots: raw_input("stop")
 
 
         # adjust this to work with the desired output file - will need a separate write function - output humidity in one set, heat indices in another?
         humidity_vars = ["temperatures","dewpoints","slp","vapour_pressure","saturation_vapour_pressure","wetbulb_temperature","specific_humidity","relative_humidity"]
-        ncdf.write(os.path.join(DATA_LOCS, station.id + "_humidity.nc"), station, humidity_vars, os.path.join(FILE_LOCS,'attributes.dat'), compressed = match_to_compress, processing_date = '', qc_code_version = '', write_QC_flags = False, write_flagged_obs = False, least_significant_digit = 5)
+        ncdfp.write(os.path.join(NETCDF_DATA_LOCS, station.id + "_humidity.nc"), station, humidity_vars, os.path.join(INPUT_FILE_LOCS,'attributes.dat'), compressed = match_to_compress, processing_date = '', qc_code_version = '', write_QC_flags = False, write_flagged_obs = False, least_significant_digit = 5)
 
         heat_stress_vars = ["temperatures","dewpoints","windspeeds","THI","WBGT","humidex","apparent_t","heat_index"]
-        ncdf.write(os.path.join(DATA_LOCS, station.id + "_heat_stress.nc"), station, heat_stress_vars, os.path.join(FILE_LOCS,'attributes.dat'), compressed = match_to_compress, processing_date = '', qc_code_version = '', write_QC_flags = False, write_flagged_obs = False, least_significant_digit = 5)
+        ncdfp.write(os.path.join(NETCDF_DATA_LOCS, station.id + "_heat_stress.nc"), station, heat_stress_vars, os.path.join(INPUT_FILE_LOCS,'attributes.dat'), compressed = match_to_compress, processing_date = '', qc_code_version = '', write_QC_flags = False, write_flagged_obs = False, least_significant_digit = 5)
         # gzip the raw file
-        subprocess.call(["gzip","-f",os.path.join(DATA_LOCS, station.id + "_humidity.nc")])
-        subprocess.call(["gzip","-f",os.path.join(DATA_LOCS, station.id + "_heat_stress.nc")])
-        # subprocess.call(["gzip",os.path.join(DATA_LOCS, station.id + "_mask.nc")])
+        subprocess.call(["gzip","-f",os.path.join(NETCDF_DATA_LOCS, station.id + "_humidity.nc")])
+        subprocess.call(["gzip","-f",os.path.join(NETCDF_DATA_LOCS, station.id + "_heat_stress.nc")])
+        # subprocess.call(["gzip",os.path.join(NETCDF_DATA_LOCS, station.id + "_mask.nc")])
+
+        logfile.write(dt.datetime.strftime(dt.datetime.now(), "%A, %d %B %Y, %H:%M:%S\n"))
+        logfile.write("processing took {:4.0f}s\n\n".format(time.time() - process_start_time))
+        logfile.close()
+
+        print "Humidity and Heat Stress Indices calculated"
 
     return # make_hum_heat_vars
 
@@ -129,14 +140,16 @@ if __name__=="__main__":
 
     args = parser.parse_args()
 
-    '''To run as stand alone, process the file and obtain station list'''
+    """To run as stand alone, process the file and obtain station list"""
     station_list = "candidate_stations.txt"
 
     try:
-        station_info = np.genfromtxt(os.path.join(FILE_LOCS, station_list), dtype=(str))
+        station_info = np.genfromtxt(os.path.join(INPUT_FILE_LOCS, station_list), dtype=(str))
     except IOError:
         print "station list not found"
         sys.exit()
 
 
     make_hum_heat_vars(station_info, restart_id = args.restart_id, end_id = args.end_id)
+
+#************************************************************************

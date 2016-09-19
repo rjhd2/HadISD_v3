@@ -22,8 +22,8 @@ import re
 
 # RJHD utilities
 from station_selection import *
+from set_paths_and_vars import *
 
-FILE_LOCS="input_files/"
 
 #*********************************************
 def writefile(filename, lines):
@@ -88,14 +88,14 @@ def process_EC_file():
 
     # storage files
 
-    SINGLE=FILE_LOCS+"Canada_single.dat"
-    ONOFF=FILE_LOCS+"Canada_onoff.dat"
-    REMAINING=FILE_LOCS+"Canada_rem.dat"
-    HOMOGENISATION=FILE_LOCS+"Canada_homogenisation.dat"
-    DATES=FILE_LOCS+"Canada_dates.dat"
-    GOODMOVE=FILE_LOCS+"Canada_goodmove.dat"
-    QUESTIONABLEMOVE=FILE_LOCS+"Canada_questionablemove.dat"
-    OVERLAP=FILE_LOCS+"Canada_overlap.dat"
+    SINGLE=INPUT_FILE_LOCS+"Canada_single.dat"
+    ONOFF=INPUT_FILE_LOCS+"Canada_onoff.dat"
+    REMAINING=INPUT_FILE_LOCS+"Canada_rem.dat"
+    HOMOGENISATION=INPUT_FILE_LOCS+"Canada_homogenisation.dat"
+    DATES=INPUT_FILE_LOCS+"Canada_dates.dat"
+    GOODMOVE=INPUT_FILE_LOCS+"Canada_goodmove.dat"
+    QUESTIONABLEMOVE=INPUT_FILE_LOCS+"Canada_questionablemove.dat"
+    OVERLAP=INPUT_FILE_LOCS+"Canada_overlap.dat"
 
     station_count = np.zeros(8)
 
@@ -120,7 +120,7 @@ def process_EC_file():
     # allow option of no EC file available - as may not be able to share this
     try:
 
-        with open(FILE_LOCS+"WMOHistory2014.txt",'r') as infile:
+        with open(INPUT_FILE_LOCS+"WMOHistory2014.txt",'r') as infile:
 
             for l,line in enumerate(infile):
 
@@ -377,7 +377,7 @@ def read_canada_info(filename, DATA_START):
        ids, names, lats, lons, active and date arrays
     '''
 
-    sorted_station_info = np.genfromtxt(FILE_LOCS + filename,delimiter=[9,35,5,11,11,11,20],dtype=(str))
+    sorted_station_info = np.genfromtxt(INPUT_FILE_LOCS + filename,delimiter=[9,35,5,11,11,11,20],dtype=(str))
 
     ids = sorted_station_info[:,0].astype(int)
     names = sorted_station_info[:,1].astype(str)
@@ -460,7 +460,7 @@ def process_canadian_stations(all_stations, DATA_START):
     # goodmove
     for category_files in ["Canada_goodmove.dat"]:
 
-        outfilename = FILE_LOCS+"Canada_time_ranges.dat"
+        outfilename = INPUT_FILE_LOCS+"Canada_time_ranges.dat"
         try:
             os.remove(outfilename)
         except OSError:

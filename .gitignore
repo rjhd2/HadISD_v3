@@ -1,2 +1,17 @@
 # files in HadISDv2 that are ignored
+
+# ignore back up files
 *.*~
+
+# ignore compiled module files
+*.pyc
+
+# ignore images whereever they are
+*.png
+*.eps
+images/**
+
+# ignore some folders of UKMO specific files
+trial_codes/**
+ukmo_utils/**
+old_selections/**
