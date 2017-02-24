@@ -6,9 +6,9 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 105                                           $:  Revision of last commit
+#$Rev:: 112                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2016-07-27 19:39:12 +0100 (Wed, 27 Jul 2016) $:  Date of last commit
+#$Date:: 2017-01-13 14:47:17 +0000 (Fri, 13 Jan 2017) $:  Date of last commit
 #************************************************************************
 
 
@@ -91,7 +91,10 @@ def read(filename, station, var_list, opt_var_list = [], diagnostics = False, re
         
         this_var = utils.MetVar(variable, var.long_name)
 
-        this_var.units = var.units
+        try:
+            this_var.units = var.units
+        except AttributeError:
+            pass
 
         this_var.dtype = var.dtype
 
@@ -258,12 +261,15 @@ def write_coordinates(outfile, short_name, standard_name, long_name, units, axis
         coord_dim = outfile.createDimension('coordinate_length', coordinate_length)
 
     nc_var = outfile.createVariable(short_name, np.dtype('float'), ('coordinate_length',), zlib = do_zip, least_significant_digit = least_significant_digit)
-    nc_var.standard_name = standard_name
+    try:
+        nc_var.standard_name = standard_name
+    except AttributeError:
+        pass
     nc_var.long_name = long_name
     nc_var.units = units
     nc_var.axis = axis
 
-    if short_name == "alt":
+    if short_name == "elevation":
         nc_var.positive = "up"
 
     nc_var[:] = data
@@ -324,12 +330,12 @@ def write(filename, station, var_list, attr_file, processing_date = '', qc_code_
     # write station coordinates
     write_coordinates(outfile, "longitude", "longitude", "station longitude", "degrees_east", "X", station.lon)
     write_coordinates(outfile, "latitude", "latitude", "station latitude", "degrees_north", "Y", station.lat)
-    write_coordinates(outfile, "altitude", "altitude", "altitude of station site", "meters", "Z", station.elev)
+    write_coordinates(outfile, "elevation", "surface_altitude", "vertical distance above the surface", "meters", "Z", station.elev)
    
 
     # station ID as base variable
     nc_var = outfile.createVariable("station_id", np.dtype('S1'), ('long_character_length',), zlib = do_zip)
-    nc_var.standard_name = "station_identification_code"
+#    nc_var.standard_name = "station_identification_code"
     nc_var.long_name = "Station ID number"
     nc_var[:] = station.id
 
@@ -361,8 +367,10 @@ def write(filename, station, var_list, attr_file, processing_date = '', qc_code_
 
         nc_var.long_name = st_var.long_name
         #nc_var.axis = st_var.axis #  apparently not needed according to CF Checker
-        nc_var.units = st_var.units
-        
+        try:
+            nc_var.units = st_var.units
+        except AttributeError:
+            pass
         try:
             nc_var.missing_value = st_var.mdi
         except AttributeError:
@@ -424,7 +432,7 @@ def write(filename, station, var_list, attr_file, processing_date = '', qc_code_
             nc_var.missing_value = -999
             nc_var.long_name = "Quality Control status for individual obs"
 #            nc_var.cell_methods = "lat: lon: time: point"
-            nc_var.coordinates = "time test"
+#            nc_var.coordinates = "time test"
             if compressed != []:
                 nc_var[:] = station.qc_flags[compressed,:]
             else:
@@ -449,8 +457,8 @@ def write(filename, station, var_list, attr_file, processing_date = '', qc_code_
             nc_var.units = '1'
             nc_var.missing_value = -1.e30
             nc_var.long_name = "Observation Values removed by QC flags "+" ".join(var_list)
-            nc_var.cell_methods = "lat: lon: time: point"
-            nc_var.coordinates = "lat lon alt"
+            nc_var.cell_methods = "latitude: longitude: time: point"
+            nc_var.coordinates = "latitude longitude elevation"
             if compressed != []:
                 nc_var[:] = flagged_obs[compressed,:]
             else:
@@ -495,7 +503,7 @@ def write(filename, station, var_list, attr_file, processing_date = '', qc_code_
     outfile.date_created = dt.datetime.strftime(dt.datetime.now(), "%Y-%m-%d, %H:%M")
     outfile.qc_code_version = qc_code_version
     outfile.station_information = 'Where station is a composite the station id refers to the primary source used in the timestep and does apply to all elements'
-    outfile.Conventions = 'CF-1.5' 
+    outfile.Conventions = 'CF-1.6' 
     outfile.Metadata_Conventions = 'Unidata Dataset Discovery v1.0,CF Discrete Sampling Geometries Conventions'
     outfile.featureType = 'timeSeries'
     outfile.processing_date = processing_date

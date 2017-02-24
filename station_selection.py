@@ -1,9 +1,9 @@
 #!/usr/local/sci/bin/python2.7
 #------------------------------------------------------------
 #                    SVN Info
-#$Rev:: 103                                           $:  Revision of last commit
+#$Rev:: 120                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2016-07-26 10:41:19 +0100 (Tue, 26 Jul 2016) $:  Date of last commit
+#$Date:: 2017-02-24 10:34:07 +0000 (Fri, 24 Feb 2017) $:  Date of last commit
 #------------------------------------------------------------
 # START
 #------------------------------------------------------------
@@ -268,16 +268,14 @@ def process_inventory(candidate_stations, data_start, data_end, min_years_presen
             if len(obs.compressed()) > (12*min_years_present):
 
                 # test for strange data structures - so do a monthly check for median of 6 hourly data.
-                monthly_medians = np.ma.median(obs, axis = 0)
+                monthly_medians = np.ma.median(obs, axis = 0).astype("int")
 
-                if all(i >= 4 * DAYS_IN_AVERAGE_MONTH[i] for i in monthly_medians):
+                if all(mm >= 4 * DAYS_IN_AVERAGE_MONTH[i] for i, mm in enumerate(monthly_medians)):
 
                     station.obs = monthly_obs
                     final_stations += [station]
 
     print "{} candidate stations (6 hourly reporting) and data in at least {} months".format(len(final_stations),12*min_years_present)
-
-    sys.exit()
 
     inventory = [] #  clear memory    
 
@@ -564,7 +562,7 @@ def find_matches(candidate_stations):
     print "finding merger candidate matches"
     match = [[] for i in range(len(candidate_stations))]
 
-    outfile = file(INPUT_FILE_LOCS+'merging_log.txt','w')
+    outfile = file(INPUT_FILE_LOCS+'internal_merging_log.txt','w')
     outfile.write("Station1 Station2, Probs, Prob-product\n\n")
     for i1,stn1 in enumerate(candidate_stations):
 
@@ -578,7 +576,7 @@ def find_matches(candidate_stations):
                 match[i1] += [i2] 
                 match[i2] += [i1] 
 
-                outfile.write("{} {} {} {}\n".format(stn1.name, stn2.name, probs, np.product(probs)))
+                outfile.write("{:30s} {:13s} {:30s} {:13s} {} {:8.4f}\n".format(stn1.name, stn1.id, stn2.name, stn2.id, " ".join(["{:8.4f}".format(p) for p in probs]), np.product(probs)))
     outfile.close()
 
     return match # find_matches
@@ -693,6 +691,8 @@ def external_merges(candidate_stations, all_stations, data_start, data_end):
         candidate_stations - updated to include new merger candidates
     """
 
+    outfile = file(INPUT_FILE_LOCS+'external_merging_log.txt','w')
+    outfile.write("Station1, Station2, Probs, Prob-product\n\n")
 
     # now check matches against full 29k ISD stations
     match = [[] for i in range(len(candidate_stations))]
@@ -705,6 +705,8 @@ def external_merges(candidate_stations, all_stations, data_start, data_end):
                 if np.product(probs) > PROB_THRESHOLD:
                    match[c_stn] += [a_stn]
                    reverse_match[a_stn] +=[[c_stn, np.product(probs)]]
+                   outfile.write("{:30s} {:13s} {:30s} {:13s} {} {:8.4f}\n".format(candidate.name, candidate.id, target.name, targat.id, " ".join(["{:8.4f}".format(p) for p in probs]), np.product(probs)))
+
 
     # check no stations being merged into two primaries
     for s, stn in enumerate(reverse_match):
@@ -716,6 +718,7 @@ def external_merges(candidate_stations, all_stations, data_start, data_end):
             for p, potential in enumerate(stn):
                 if p != max_prob:
                     match[potential[0]] = [stnid for stnid in match[potential[0]] if stnid != s ]
+
 
     try:
         inventory = np.genfromtxt(INPUT_FILE_LOCS+ISD_INVENTORY, skip_header = 8, dtype = int)

@@ -14,25 +14,29 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 67                                            $:  Revision of last commit
+#$Rev:: 114                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2015-05-01 16:18:52 +0100 (Fri, 01 May 2015) $:  Date of last commit
+#$Date:: 2017-01-17 17:26:42 +0000 (Tue, 17 Jan 2017) $:  Date of last commit
 #************************************************************************
 import numpy as np
 import scipy as sp
 import datetime as dt
+import copy
 
 # RJHD routines
 import qc_utils as utils
 
 
 # threshold values for low, mid and high resolution for each of the variables tested
+# consecutive repeats (ignoring missing data); spread over N days; same at each hour of day for N days; full day repeats
+
 T = {1: [40, 14, 25, 10], 0.5: [30, 10, 20, 7], 0.1: [24, 7, 15, 5]}
 D = {1: [80, 14, 25, 10], 0.5: [60, 10, 20, 7], 0.1: [48, 7, 15, 2]}
 S = {1: [120, 28, 25, 10], 0.5:[100, 21, 20, 7], 0.1:[72, 14, 15, 5]}
-W = {1: [40, 14, 25, 10], 0.5: [30, 10, 20, 7], 0.1: [24, 7, 15, 5]}
+WS = {1: [40, 14, 25, 10], 0.5: [30, 10, 20, 7], 0.1: [24, 7, 15, 5]}
+WD = {90: [120, 28, 28, 10], 45: [96, 28, 28, 10], 22: [72, 21, 21, 7], 10: [48, 14, 14, 7], 1: [24, 7, 14, 5]}
 
-limits_dict = {"temperatures": T, "dewpoints":  D, "slp": S, "windspeeds": W}
+limits_dict = {"temperatures": T, "dewpoints":  D, "slp": S, "windspeeds": WS, "winddirs": WD}
 
 WIND_MIN_VALUE = {1:0.5, 0.5:1.0, 0.1:0.5}
 
@@ -118,7 +122,7 @@ def rsc_diagnostics_and_plot(time, data, flags, title, start, plots = False):
     '''
 
 
-    YLABELS = {"temperatures":"Temperature (C)", "dewpoints":"Dewpoints (C)", "slp":"SLP (hPa)", "windspeeds":"Wind Speed (m/s)"}
+    YLABELS = {"temperatures":"Temperature (C)", "dewpoints":"Dewpoints (C)", "slp":"SLP (hPa)", "windspeeds":"Wind Speed (m/s)", "winddirs":"Degrees"}
 
     # get period to plot and convert times
     extra = 48
@@ -248,12 +252,27 @@ def rsc_straight_strings(st_var, times, n_obs, n_days, start, end, wind = False,
 
     # January 2015 - changed to dynamically calculating the thresholds, but only use if less than current ^RJHD
 
-    if dynamic:
-        threshold = rsc_get_straight_string_threshold(st_var, start, end, reporting = reporting, diagnostics = diagnostics, plots = plots, old_threshold = n_obs)          
 
-        if threshold < n_obs: n_obs = threshold
+    if st_var.name == "winddirs":
+        # remove calm periods for this check.
+        wd_st_var = copy.deepcopy(st_var)
+        calms, = np.ma.where(st_var.data == 0) # True calms have direction set to 0, northerlies to 360
+        wd_st_var.data[calms] = wd_st_var.mdi
 
-    all_filtered = utils.apply_filter_flags(st_var)
+        if dynamic:
+            threshold = rsc_get_straight_string_threshold(wd_st_var, start, end, reporting = reporting, diagnostics = diagnostics, plots = plots, old_threshold = n_obs)          
+
+            if threshold < n_obs: n_obs = threshold
+
+        all_filtered = utils.apply_filter_flags(wd_st_var) # calms have been removed
+
+    else:
+        if dynamic:
+            threshold = rsc_get_straight_string_threshold(st_var, start, end, reporting = reporting, diagnostics = diagnostics, plots = plots, old_threshold = n_obs)          
+            
+            if threshold < n_obs: n_obs = threshold
+
+        all_filtered = utils.apply_filter_flags(st_var)
     
     flags = np.zeros(len(all_filtered))
     
@@ -273,20 +292,26 @@ def rsc_straight_strings(st_var, times, n_obs, n_days, start, end, wind = False,
         if all_filtered.mask[o] == False:
             
             if obs != prev_value:
-                # if different value to before, which is long enough (and large enough for Wind)
-                if len(string_points) >= 10:
-                    if wind == False or (wind == True and prev_value > WIND_MIN_VALUE[reporting]):
-                        # note start and length for the annual excess test
-                        value_starts += [string_points[0]]
-                        value_lengths += [len(string_points)]
-        
-                        time_diff = times[string_points[-1]] - times[string_points[0]]
-                        
-                        # if length above threshold and spread over sufficient time frame, flag
-                        if (len(string_points) >= n_obs) or (time_diff >= (n_days * 24)): # measuring time in hours 
-                            flags[string_points] = 1
-                            if plots or diagnostics:
-                                rsc_diagnostics_and_plot(times, all_filtered, string_points, st_var.name, start, plots = plots)           
+                if (st_var.name == "winddirs") and (prev_value == 0):
+                    # this was a calm as a string of zeros.
+                    # shouldn't be necessary - but just in case!
+                    pass
+
+                else:
+                    # if different value to before, which is long enough (and large enough for Wind)
+                    if len(string_points) >= 10:
+                        if wind == False or (wind == True and prev_value > WIND_MIN_VALUE[reporting]):
+                            # note start and length for the annual excess test
+                            value_starts += [string_points[0]]
+                            value_lengths += [len(string_points)]
+
+                            time_diff = times[string_points[-1]] - times[string_points[0]]
+
+                            # if length above threshold and spread over sufficient time frame, flag
+                            if (len(string_points) >= n_obs) or (time_diff >= (n_days * 24)): # measuring time in hours 
+                                flags[string_points] = 1
+                                if plots or diagnostics:
+                                    rsc_diagnostics_and_plot(times, all_filtered, string_points, st_var.name, start, plots = plots)           
                                 
                 string_points = [o]
             else:
@@ -413,12 +438,14 @@ def rsc(station, var_list, flag_col, start, end, logfile, diagnostics = False, p
                 
         if len(utils.apply_filter_flags(st_var).compressed()) > 0:
         
-            reporting_resolution = utils.reporting_accuracy(utils.apply_filter_flags(st_var))
-
-            limits = limits_dict[variable][reporting_resolution]  
-
             wind = False
             if variable == "windspeeds": wind = True
+            winddir= False
+            if variable == "winddirs": winddir = True
+
+            reporting_resolution = utils.reporting_accuracy(utils.apply_filter_flags(st_var), winddir = winddir, plots = plots)
+
+            limits = limits_dict[variable][reporting_resolution]  
 
             # need to apply flags to st_var.flags each time for filtering
             station.qc_flags[:,flag_col[v][0]] = rsc_straight_strings(st_var, times, limits[0], limits[1], start, end, reporting = reporting_resolution, wind = wind, diagnostics = diagnostics, plots = plots, dynamic = True)

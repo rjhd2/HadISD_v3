@@ -1,9 +1,9 @@
 #!/usr/local/sci/bin/python
 #************************************************************************
 #                    SVN Info
-#$Rev:: 104                                           $:  Revision of last commit
+#$Rev:: 112                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2016-07-26 10:52:02 +0100 (Tue, 26 Jul 2016) $:  Date of last commit
+#$Date:: 2017-01-13 14:47:17 +0000 (Fri, 13 Jan 2017) $:  Date of last commit
 #************************************************************************
 
 '''
@@ -319,7 +319,7 @@ def WriteAttributes(variable,long_name,cell_methods,missing_value,units,axis,vmi
     variable.long_name=long_name
     variable.cell_methods=cell_methods
     variable.missing_value=missing_value
-    variable.axis=axis
+#    variable.axis=axis # 12/1/17 RJHD - not required for CF compliance.
     variable.units=units
     variable.valid_min=vmin
     variable.valid_max=vmax
@@ -342,8 +342,8 @@ def WriteFlagAttributes(variable,long_name,missing_value,axis):
     """
     variable.long_name=long_name
     variable.missing_value=missing_value
-    variable.units="no_unit"
-    variable.axis=axis
+    variable.units="1"
+#    variable.axis=axis # 12/1/17 RJHD - not required for CF compliance.
 
     # for future [September 2015]
     # http://cfconventions.org/Data/cf-conventions/cf-conventions-1.6/build/cf-conventions.html#flags
@@ -1363,13 +1363,13 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, restart_id="", end_id="", do_zip = True,
 
 
         # write the coordinates
-        write_coordinates(netcdf_outfile, "lat", "latitude", "station_latitude", "degrees_east", "X", StationLat[st])
-        write_coordinates(netcdf_outfile, "lon", "longitude", "station_longitude", "degrees_north", "Y", StationLon[st])
-        write_coordinates(netcdf_outfile, "alt", "height", "vertical distance above the surface", "meters", "Z", StationElv[st])
+        write_coordinates(netcdf_outfile, "latitude", "latitude", "station_latitude", "degrees_north", "Y", StationLat[st])
+        write_coordinates(netcdf_outfile, "longitude", "longitude", "station_longitude", "degrees_east", "X", StationLon[st])
+        write_coordinates(netcdf_outfile, "elevation", "surface_altitude", "vertical distance above the surface", "meters", "Z", StationElv[st])
 
         # station ID as base variable
         nc_var = netcdf_outfile.createVariable("station_id", np.dtype('S1'), ('long_character_length',), zlib = do_zip)
-        nc_var.standard_name = "station_identification_code"
+#        nc_var.standard_name = "station_identification_code"
         nc_var.long_name = "Station ID number"
         nc_var[:] = ncdf.stringtochar(StationIDs[st])
 
@@ -1401,7 +1401,7 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, restart_id="", end_id="", do_zip = True,
         pswx1var=netcdf_outfile.createVariable('past_sigwx1','i4',('time',), zlib = do_zip)
         pswx1pvar=netcdf_outfile.createVariable('past_sigwx1_period','i4',('time',), zlib = do_zip)
         pswx1fvar=netcdf_outfile.createVariable('past_sigwx1_flag','i4',('time',), zlib = do_zip)
-        ppt1pvar=netcdf_outfile.createVariable('precip1_period','i4',('time',), zlib = do_zip)
+        ppt1pvar=netcdf_outfile.createVariable('precip1_period','i8',('time',), zlib = do_zip)
         ppt1dvar=netcdf_outfile.createVariable('precip1_depth','f8',('time',), zlib = do_zip)
         ppt1cvar=netcdf_outfile.createVariable('precip1_condition','S1',('time','character_length',), zlib = do_zip)
         ppt1fvar=netcdf_outfile.createVariable('precip1_flag','i4',('time',), zlib = do_zip)
@@ -1420,15 +1420,15 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, restart_id="", end_id="", do_zip = True,
             wtvar=netcdf_outfile.createVariable('windtypes','S1',('time','character_length'), zlib = do_zip)
             swxvar=netcdf_outfile.createVariable('present_sigwx','i4',('time',), zlib = do_zip)
             swxfvar=netcdf_outfile.createVariable('present_sigwx_flags','i4',('time',), zlib = do_zip)
-            ppt2pvar=netcdf_outfile.createVariable('precip2_period','i4',('time',), zlib = do_zip)
+            ppt2pvar=netcdf_outfile.createVariable('precip2_period','i8',('time',), zlib = do_zip)
             ppt2dvar=netcdf_outfile.createVariable('precip2_depth','f8',('time',), zlib = do_zip)
             ppt2cvar=netcdf_outfile.createVariable('precip2_condition','S1',('time','character_length',), zlib = do_zip)
             ppt2fvar=netcdf_outfile.createVariable('precip2_flag','i4',('time',), zlib = do_zip)
-            ppt3pvar=netcdf_outfile.createVariable('precip3_period','i4',('time',), zlib = do_zip)
+            ppt3pvar=netcdf_outfile.createVariable('precip3_period','i8',('time',), zlib = do_zip)
             ppt3dvar=netcdf_outfile.createVariable('precip3_depth','f8',('time',), zlib = do_zip)
             ppt3cvar=netcdf_outfile.createVariable('precip3_condition','S1',('time','character_length',), zlib = do_zip)
             ppt3fvar=netcdf_outfile.createVariable('precip3_flag','i4',('time',), zlib = do_zip)
-            ppt4pvar=netcdf_outfile.createVariable('precip4_period','i4',('time',), zlib = do_zip)
+            ppt4pvar=netcdf_outfile.createVariable('precip4_period','i8',('time',), zlib = do_zip)
             ppt4dvar=netcdf_outfile.createVariable('precip4_depth','f8',('time',), zlib = do_zip)
             ppt4cvar=netcdf_outfile.createVariable('precip4_condition','S1',('time','character_length',), zlib = do_zip)
             ppt4fvar=netcdf_outfile.createVariable('precip4_flag','i4',('time',), zlib = do_zip)
@@ -1455,7 +1455,7 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, restart_id="", end_id="", do_zip = True,
         timesvar.end_year = "{}".format(ENDYEAR)
         timesvar.start_month = "1"
         timesvar.end_month = "12"
-        timesvar.coordinates = "time"
+#        timesvar.coordinates = "time"
 
         # lonsvar.standard_name = "longitude"
         # lonsvar.long_name = "station_longitude"
@@ -1477,112 +1477,109 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, restart_id="", end_id="", do_zip = True,
         # idsvar.long_name = "Station ID number"
         # idsvar.cf_role='timeseries_id'
 
-        stationsvar.standard_name='station_identification_code'
-        stationsvar.long_name='Primary source for timestep (may be multiple sources for composite stations)'
-        stationsvar.units='USAF - WBAN from ISD source'
+#        stationsvar.standard_name='station_identification_code'
+        stationsvar.long_name='Primary source for timestep (may be multiple sources for composite stations). USAF-WBAN from ISD source'
+#        stationsvar.units='USAF - WBAN from ISD source'
         stationsvar.missing_value='null'
 
         try:
             tmin,tmax=np.min(temperatures[np.where(temperatures != FLTMDI)[0]]),np.max(temperatures[np.where(temperatures != FLTMDI)[0]])
         except ValueError:
             tmin,tmax=FLTMDI,FLTMDI
-        WriteAttributes(tempsvar,'Dry bulb air temperature at screen height (~2m)','lat: lon: time: point (nearest to reporting hour)',FLTMDI,'degree_Celsius','T',tmin,tmax,'lat lon alt',standard_name = 'surface_temperature')
+        WriteAttributes(tempsvar,'Dry bulb air temperature at screen height (~2m)','latitude: longitude: time: point (nearest to reporting hour)',FLTMDI,'degree_Celsius','T',tmin,tmax,'latitude longitude elevation',standard_name = 'surface_temperature')
         WriteFlagAttributes(tempsflagsvar,'ISD flags for temperature - see ISD documentation',INTMDI,'T')
 
         try:
             dmin,dmax=np.min(dewpoints[np.where(dewpoints != FLTMDI)[0]]),np.max(dewpoints[np.where(dewpoints != FLTMDI)[0]])
         except ValueError:
             dmin,dmax=FLTMDI,FLTMDI
-        WriteAttributes(dewsvar,'Dew point temperature at screen height (~2m)','lat: lon: time: point (nearest to reporting hour',FLTMDI,'degree_Celsius','T',dmin,dmax,'lat lon alt',standard_name =  'dew_point_temperature')
+        WriteAttributes(dewsvar,'Dew point temperature at screen height (~2m)','latitude: longitude: time: point (nearest to reporting hour)',FLTMDI,'degree_Celsius','T',dmin,dmax,'latitude longitude elevation',standard_name =  'dew_point_temperature')
         WriteFlagAttributes(dewsflagsvar,'ISD flags for dewpoint temperature - see ISD documentation',INTMDI,'T')
 
-        WriteAttributes(tcvar,'Total cloud cover (oktas)','lat: lon: time: point (derived in priority order GA, GF, GD - see ISD documentation, nearest to reporting hour)', INTMDI, '1', 'T', 0,8, 'lat lon alt',standard_name = "cloud_area_fraction")
+        WriteAttributes(tcvar,'Total cloud cover (oktas)','latitude: longitude: time: point (derived in priority order GA, GF, GD - see ISD documentation, nearest to reporting hour)', INTMDI, '1', 'T', 0,8, 'latitude longitude elevation',standard_name = "cloud_area_fraction")
         WriteFlagAttributes(tcfvar,'ISD flags for total cloud - see ISD documentation',INTMDI,'T')
 
-        WriteAttributes(lcvar,'Low cloud cover (oktas)','lat: lon: time: point (derived in priority order GA, GF, GD - see ISD documentation, nearest to reporting hour)', INTMDI, '1', 'T', 0,8, 'lat lon alt',standard_name = "low_type_cloud_area_fraction")
+        WriteAttributes(lcvar,'Low cloud cover (oktas)','latitude: longitude: time: point (derived in priority order GA, GF, GD - see ISD documentation, nearest to reporting hour)', INTMDI, '1', 'T', 0,8, 'latitude longitude elevation',standard_name = "low_type_cloud_area_fraction")
         WriteFlagAttributes(lcfvar,'ISD flags for low cloud - see ISD documentation',INTMDI,'T')
 
-        WriteAttributes(mcvar,'Mid cloud cover (oktas)','lat: lon: time: point (derived in priority order GA, GF, GD - see ISD documentation, nearest to reporting hour)', INTMDI, '1', 'T', 0,8, 'lat lon alt',standard_name = "medium_type_cloud_area_fraction")
+        WriteAttributes(mcvar,'Mid cloud cover (oktas)','latitude: longitude: time: point (derived in priority order GA, GF, GD - see ISD documentation, nearest to reporting hour)', INTMDI, '1', 'T', 0,8, 'latitude longitude elevation',standard_name = "medium_type_cloud_area_fraction")
         WriteFlagAttributes(mcfvar,'ISD flags for mid cloud - see ISD documentation',INTMDI,'T')
 
-        WriteAttributes(hcvar,'High cloud cover (oktas)','lat: lon: time: point (derived in priority order GA, GF, GD - see ISD documentation, nearest to reporting hour)', INTMDI, '1', 'T', 0,8, 'lat lon alt',standard_name = "high_type_cloud_area_fraction")
+        WriteAttributes(hcvar,'High cloud cover (oktas)','latitude: longitude: time: point (derived in priority order GA, GF, GD - see ISD documentation, nearest to reporting hour)', INTMDI, '1', 'T', 0,8, 'latitude longitude elevation',standard_name = "high_type_cloud_area_fraction")
         WriteFlagAttributes(hcfvar,'ISD flags for high cloud - see ISD documentation',INTMDI,'T')
 
         try:
             cbmin,cbmax=np.min(cloud_base[np.where(cloud_base != INTMDI)[0]]),np.max(cloud_base[np.where(cloud_base != INTMDI)[0]])
         except ValueError:
             cbmin,cbmax=FLTMDI,FLTMDI
-        WriteAttributes(cbvar,'Cloud base of lowest cloud layer','lat: lon: time: point (nearest to reporting hour', INTMDI, 'meters', 'T', cbmin, cbmax, 'lat lon alt',standard_name = 'cloud_base_altitude')
+        WriteAttributes(cbvar,'Cloud base of lowest cloud layer','latitude: longitude: time: point (nearest to reporting hour)', INTMDI, 'meters', 'T', cbmin, cbmax, 'latitude longitude elevation',standard_name = 'cloud_base_altitude')
         WriteFlagAttributes(cbfvar,'ISD flags for cloud base - see ISD documentation',INTMDI,'T')
 
         try:
             wsmin,wsmax=np.min(windspeeds[np.where(windspeeds != FLTMDI)[0]]),np.max(windspeeds[np.where(windspeeds != FLTMDI)[0]])
         except ValueError:
             wsmin,wsmax=FLTMDI,FLTMDI
-        WriteAttributes(wsvar,'Wind speed at mast height (~10m)','lat: lon: time: point (nearest to reporting hour)', FLTMDI, 'meters per second', 'T', wsmin, wsmax,'lat lon alt',standard_name = 'wind_speed')
+        WriteAttributes(wsvar,'Wind speed at mast height (~10m)','latitude: longitude: time: point (nearest to reporting hour)', FLTMDI, 'meters per second', 'T', wsmin, wsmax,'latitude longitude elevation',standard_name = 'wind_speed')
         WriteFlagAttributes(wsfvar,'ISD flags for windspeed - see ISD documentation',INTMDI,'T')
 
-        WriteAttributes(wdvar,'Wind Direction at mast height (~10m)','lat: lon: time: point (nearest to reporting hour)', INTMDI, 'degree', 'T', 0, 360, 'lat lon alt',standard_name = 'wind_from_direction')
+        WriteAttributes(wdvar,'Wind Direction at mast height (~10m)','latitude: longitude: time: point (nearest to reporting hour)', INTMDI, 'degree', 'T', 0, 360, 'latitude longitude elevation',standard_name = 'wind_from_direction')
         WriteFlagAttributes(wdfvar,'ISD flags for wind direction - see ISD documentation',INTMDI,'T')
 
-        WriteAttributes(pswx1var,'Reported past significant weather phenomena','lat: lon: point (interval: 1 day)', INTMDI, '1', 'T', 0, 9,'lat lon alt')
+        WriteAttributes(pswx1var,'Reported past significant weather phenomena','latitude: longitude: point (interval: 1 day)', INTMDI, '1', 'T', 0, 9,'latitude longitude elevation')
         WriteFlagAttributes(pswx1fvar,'ISD flags for reported past significant weather - see ISD documentation',INTMDI,'T')
-        WriteAttributes(pswx1pvar,'Reported period over which significant weather report was recorded','lat: lon: point (interval: 1 day)', INTMDI, 'Hours', 'T', 0, 24,'lat lon alt')
+        WriteAttributes(pswx1pvar,'Reported period over which significant weather report was recorded','latitude: longitude: point (interval: 1 day)', INTMDI, 'Hours', 'T', 0, 24,'latitude longitude elevation')
 
-        WriteAttributes(ppt1pvar,'Reported period over which precipitation was recorded','(as ISD variable precip1)', INTMDI, 'hour', 'T', 0, 98,'lat lon alt precip1_depth', standard_name = 'period_of_precipitation_report')
-        WriteAttributes(ppt1dvar,'Depth of Precipitation Reported over time period','lat: lon: point precip1_period: sum (as ISD variable precip1)', FLTMDI, 'mm', 'T', 0, 999.8,'lat lon alt precip1_period', standard_name = 'lwe_thickness_of_precipitation_amount')
+        WriteAttributes(ppt1pvar,'Reported period over which precipitation was recorded','latitude: longitude: point', long(INTMDI), 'hour', 'T', 0, 98,'latitude longitude elevation precip1_depth') #, standard_name = 'period_of_precipitation_report')
+        WriteAttributes(ppt1dvar,'Depth of Precipitation Reported over time period','latitude: longitude: time: sum ', FLTMDI, 'mm', 'T', 0, 999.8,'latitude longitude elevation precip1_period', standard_name = 'lwe_thickness_of_precipitation_amount')
         WriteFlagAttributes(ppt1cvar,'Precipitation Code (denotes if trace amount)', 'null','T')
         WriteFlagAttributes(ppt1fvar,'ISD flags for first precip field - see ISD documentation', INTMDI,'T')
-        ppt1cvar.units='no_unit'
 
         try:
             smin,smax=np.min(slp[np.where(slp != FLTMDI)[0]]),np.max(slp[np.where(slp != FLTMDI)[0]])
         except ValueError:
             smin,smax=FLTMDI,FLTMDI
-        WriteAttributes(slpvar,'Reported Sea Level Pressure at screen height (~2m)','lat: lon: time: point (nearest to reporting hour)',FLTMDI, 'hPa', 'T', smin, smax, 'lat lon alt',standard_name = 'air_pressure_at_sea_level')
+
+        WriteAttributes(slpvar,'Reported Sea Level Pressure at screen height (~2m)','latitude: longitude: time: point (nearest to reporting hour)',FLTMDI, 'hPa', 'T', smin, smax, 'latitude longitude elevation',standard_name = 'air_pressure_at_sea_level')
         WriteFlagAttributes(slpfvar,'ISD flags for slp field - see ISD documentation',INTMDI,'T')
 
-        WriteAttributes(sdvar,'Reported Sunshine Duration','lat: lon: time: point (nearest to reporting hour)', INTMDI, 'minutes', 'T', 0, 6000, 'lat lon alt', standard_name = 'duration_of_sunshine')
+        WriteAttributes(sdvar,'Reported Sunshine Duration','latitude: longitude: time: point (nearest to reporting hour)', INTMDI, 'minutes', 'T', 0, 6000, 'latitude longitude elevation', standard_name = 'duration_of_sunshine')
         WriteFlagAttributes(sdfvar,'ISD flags sun duration field - see ISD documentation',INTMDI,'T')
 
-        WriteAttributes(wgstpvar,'Period of Maximum Wind Gust Speed', 'lat: lon: time: point (nearest to reporting hour)', INTMDI, 'Hours', 'T', 0, 48, 'lat lon alt',standard_name = 'period_of_wind_gust')
-        WriteAttributes(wgstvvar,'Wind Gust Speed at mast height (~10m)','lat: lon: time: point (nearest to reporting hour)',FLTMDI, 'meters per second', 'T', 0, 200.0, 'lat lon alt',standard_name = 'wind_speed_of_gust')
+        WriteAttributes(wgstpvar,'Period of Maximum Wind Gust Speed', 'latitude: longitude: time: point (nearest to reporting hour)', INTMDI, 'Hours', 'T', 0, 48, 'latitude longitude elevation') #,standard_name = 'period_of_wind_gust')
+        WriteAttributes(wgstvvar,'Wind Gust Speed at mast height (~10m)','latitude: longitude: time: point (nearest to reporting hour)',FLTMDI, 'meters per second', 'T', 0, 200.0, 'latitude longitude elevation',standard_name = 'wind_speed_of_gust')
         WriteFlagAttributes(wgstfvar,'ISD flags for wind gust field - see ISD documentation', INTMDI,'T')
 
         if Extra:
             WriteFlagAttributes(wtvar,'Wind observation type - see ISD documentation','null','T')
 
-            WriteAttributes(pswx2var,'Station reports of past significant weather phenomena (2)','lat: lon: point (interval: 1 day)', INTMDI, 'no_unit', 'T', 0, 9,'lat lon alt')
+            WriteAttributes(pswx2var,'Station reports of past significant weather phenomena (2)','latitude: longitude: point (interval: 1 day)', INTMDI, '1', 'T', 0, 9,'latitude longitude elevation')
             WriteFlagAttributes(pswx2fvar,'ISD flags for reported past significant weather - see ISD documentation',INTMDI,'T')
-            WriteAttributes(pswx2pvar,'Period of significant weather report','lat: lon: point (interval: 1 day)', INTMDI, 'hour', 'T', 0, 24,'lat lon alt')
+            WriteAttributes(pswx2pvar,'Period of significant weather report','latitude: longitude: point (interval: 1 day)', INTMDI, 'hour', 'T', 0, 24,'latitude longitude elevation')
 
-            WriteAttributes(swxvar,'Station reports of present significant weather phenomena','lat: lon: point (interval: 1 day)', INTMDI, 'no_unit', 'T', 0, 99,'lat lon alt')
+            WriteAttributes(swxvar,'Station reports of present significant weather phenomena','latitude: longitude: point (interval: 1 day)', INTMDI, '1', 'T', 0, 99,'latitude longitude elevation')
             WriteFlagAttributes(swxfvar,'ISD flags for reported present significant weather - see ISD documentation',INTMDI,'T')
 
-            WriteAttributes(ppt2pvar,'Reported period over which precipitation was recorded','(as ISD variable precip2)', INTMDI, 'hour', 'T', 0, 98,'lat lon alt precip2_depth')
-            WriteAttributes(ppt2dvar,'Depth of Precipitation Reported over time period','lat: lon: point precip2_period: sum (as ISD variable precip2)', FLTMDI, 'mm', 'T', 0, 999.8,'lat lon alt precip2_period')
+            WriteAttributes(ppt2pvar,'Reported period over which precipitation was recorded','(as ISD variable precip2)', long(INTMDI), 'hour', 'T', 0, 98,'latitude longitude elevation precip2_depth')
+            WriteAttributes(ppt2dvar,'Depth of Precipitation Reported over time period','latitude: longitude: sum', FLTMDI, 'mm', 'T', 0, 999.8,'latitude longitude elevation precip2_period')
             WriteFlagAttributes(ppt2cvar,'Denotes if trace amount', 'null','T')
             WriteFlagAttributes(ppt2fvar,'ISD flags for second precip field - see ISD documentation', INTMDI,'T')
-            ppt2cvar.units='no_unit'
 
-            WriteAttributes(ppt3pvar,'Reported period over which precipitation was recorded','(as ISD variable precip3)', INTMDI, 'hour', 'T', 0, 98,'lat lon alt precip3_depth')
-            WriteAttributes(ppt3dvar,'Depth of Precipitation Reported over time period','lat: lon: point precip3_period: sum (as ISD variable precip3)', FLTMDI, 'mm', 'T', 0, 999.8,'lat lon alt precip3_period')
+            WriteAttributes(ppt3pvar,'Reported period over which precipitation was recorded','(as ISD variable precip3)', long(INTMDI), 'hour', 'T', 0, 98,'latitude longitude elevation precip3_depth')
+            WriteAttributes(ppt3dvar,'Depth of Precipitation Reported over time period','latitude: longitude: time: sum', FLTMDI, 'mm', 'T', 0, 999.8,'latitude longitude elevation precip3_period')
             WriteFlagAttributes(ppt3cvar,'Denotes if trace amount', 'null','T')
             WriteFlagAttributes(ppt3fvar,'ISD flags for third precip field - see ISD documentation', INTMDI,'T')
-            ppt3cvar.units='no_unit'
 
-            WriteAttributes(ppt4pvar,'Reported period over which precipitation was recorded','(as ISD variable precip4)', INTMDI, 'hour', 'T', 0, 98,'lat lon alt precip4_depth')
-            WriteAttributes(ppt4dvar,'Depth of Precipitation Reported over time period','lat: lon: point precip4_period: sum (as ISD variable precip4)', FLTMDI, 'mm', 'T', 0, 999.8,'lat lon alt precip4_period')
+            WriteAttributes(ppt4pvar,'Reported period over which precipitation was recorded','(as ISD variable precip4)', long(INTMDI), 'hour', 'T', 0, 98,'latitude longitude elevation precip4_depth')
+            WriteAttributes(ppt4dvar,'Depth of Precipitation Reported over time period','latitude: longitude: time: sum', FLTMDI, 'mm', 'T', 0, 999.8,'latitude longitude elevation precip4_period')
             WriteFlagAttributes(ppt4cvar,'Denotes if trace amount', 'null','T')
             WriteFlagAttributes(ppt4fvar,'ISD flags for fourth precip field - see ISD documentation', INTMDI,'T')
-            ppt4cvar.units='no_unit'
 
             try:
                 xtmin,xtmax=np.min(maximum_temp_value[np.where(maximum_temp_value != FLTMDI)[0]]),np.max(maximum_temp_value[np.where(maximum_temp_value != FLTMDI)[0]])
             except ValueError:
                 xtmin,xtmax=FLTMDI,FLTMDI
-            WriteAttributes(maxtpvar,'Reported period over which maximum temperature was recorded','lat: lon: point (interval: 1 day)', FLTMDI, 'hour', 'T', 0, 48,'lat lon alt')
-            WriteAttributes(maxtvvar,'Dry bulb maximum temperature reported over time period','lat: lon: time: point (interval: 1 day)', FLTMDI,'degrees_Celsius','T',xtmin,xtmax)
+            WriteAttributes(maxtpvar,'Reported period over which maximum temperature was recorded','latitude: longitude: point (interval: 1 day)', FLTMDI, 'hour', 'T', 0, 48,'latitude longitude elevation')
+            WriteAttributes(maxtvvar,'Dry bulb maximum temperature reported over time period','latitude: longitude: time: point (interval: 1 day)', FLTMDI,'degrees_Celsius','T',xtmin,xtmax)
             WriteFlagAttributes(maxtfvar,'ISD flags for maximum temperature field - see ISD documentation', INTMDI, 'T')
 
 
@@ -1590,8 +1587,8 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, restart_id="", end_id="", do_zip = True,
                 ntmin,ntmax=np.min(minimum_temp_value[np.where(minimum_temp_value != FLTMDI)[0]]),np.max(minimum_temp_value[np.where(minimum_temp_value != FLTMDI)[0]])
             except ValueError:
                 ntmin,ntmax=FLTMDI,FLTMDI
-            WriteAttributes(mintpvar,'Reported period over which minimum temperature was recorded','lat: lon: point (interval: 1 day)', FLTMDI, 'hour', 'T', 0, 48,'lat lon alt')
-            WriteAttributes(mintvvar,'Dry bulb minimum temperature reported over time period','lat: lon: time: point (interval: 1 day)', FLTMDI,'degree_Celsius','T',ntmin,ntmax)
+            WriteAttributes(mintpvar,'Reported period over which minimum temperature was recorded','latitude: longitude: point (interval: 1 day)', FLTMDI, 'hour', 'T', 0, 48,'latitude longitude elevation')
+            WriteAttributes(mintvvar,'Dry bulb minimum temperature reported over time period','latitude: longitude: time: point (interval: 1 day)', FLTMDI,'degree_Celsius','T',ntmin,ntmax)
             WriteFlagAttributes(mintfvar,'ISD flags for minimum temperature field - see ISD documentation', INTMDI, 'T')
 
 
@@ -1604,6 +1601,7 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, restart_id="", end_id="", do_zip = True,
         netcdf_outfile.latitude=StationLat[st]
         netcdf_outfile.longitude=StationLon[st]
         netcdf_outfile.elevation=StationElv[st]
+        netcdf_outfile.Conventions="CF-1.6"
         netcdf_outfile.date_created = dt.datetime.strftime(dt.datetime.now(), "%Y-%m-%d, %H:%M")
         netcdf_outfile.history = "Created by mk_netcdf_files.py \n"
  
@@ -1693,6 +1691,7 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, restart_id="", end_id="", do_zip = True,
 
         print dt.datetime.now()-dbg_sttime
         print dt.datetime.now()
+        print "\n END"
         
     return # MakeNetcdfFiles
 #--------------------------------
@@ -1728,6 +1727,8 @@ if __name__=="__main__":
     restart_id=args.restart_id
     end_id=args.end_id
     Extra=args.extra
+
+    print "\n Making NetCDF files from ISD ASCII files \n"
 
     print "Reading data from %s" % ISD_DATA_LOCS
     print "Writing data to %s" % NETCDF_DATA_LOCS

@@ -6,9 +6,9 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 103                                           $:  Revision of last commit
+#$Rev:: 116                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2016-07-26 10:41:19 +0100 (Tue, 26 Jul 2016) $:  Date of last commit
+#$Date:: 2017-01-30 15:24:24 +0000 (Mon, 30 Jan 2017) $:  Date of last commit
 #************************************************************************
 
 
@@ -400,7 +400,7 @@ def detect(station, neighbour, variable, flags, neighbour_count, start, end, dis
     st_var = getattr(station, variable)
     neigh_var = getattr(neighbour, variable)
 
-    # filter by flags - not all (no Climatological or Odd cluster), T record check not in D, 
+    # filter by flags - not all (no Climatological [24,25], or Odd cluster [54,55,56,57]), T record check not in D, 
     total_flags = np.sum(station.qc_flags[:,FILTERING_FLAG_COL[variable]], axis = 1)
     st_filtered = np.ma.masked_where(total_flags == 1, st_var.data)
     neigh_filtered = np.ma.masked_where(total_flags == 1, neigh_var.data)
@@ -439,7 +439,7 @@ def detect(station, neighbour, variable, flags, neighbour_count, start, end, dis
                 all_iqrs[year[0]:year[1]] = iqr
 
         if plots:
-            plot_target_neigh_diffs_dist(differences, min(iqr))
+            plot_target_neigh_diffs_dist(differences, min(all_iqrs))
 
         dubious = np.ma.where(np.ma.abs(differences) > 5. * all_iqrs)
 

@@ -1,9 +1,9 @@
 #!/usr/local/sci/bin/python2.7
 #------------------------------------------------------------
 #                    SVN Info
-#$Rev:: 104                                           $:  Revision of last commit
+#$Rev:: 116                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2016-07-26 10:52:02 +0100 (Tue, 26 Jul 2016) $:  Date of last commit
+#$Date:: 2017-01-30 15:24:24 +0000 (Mon, 30 Jan 2017) $:  Date of last commit
 #------------------------------------------------------------
 # History:
 #  16 - Created and tested
@@ -32,7 +32,7 @@ Had issues with urlretrieve and file sizes and so have a doftp call
 using os.system as a failsafe backup (Jan2013)
 '''
 
-import urllib
+import urllib2
 import datetime
 import os
 import shutil
@@ -45,8 +45,8 @@ from set_paths_and_vars import *
 
 
 # Globals
-HOST=r'ftp://ftp.ncdc.noaa.gov'
-ISD_LOC=r'/pub/data/noaa/'
+HOST='ftp://ftp.ncdc.noaa.gov'
+ISD_LOC='/pub/data/noaa/'
 
 STATIONLISTFILES=["candidate_stations.txt","final_mergers.txt"]
 
@@ -87,11 +87,11 @@ class DataFile(object):
 #---------------------------------------------------------------------
 
 #*********************************************
-def GetFileListing(host,location,year):
+def GetFileListing(host,location,year = ""):
     """Log in to Server and return file listing"""
 
     try:
-        ftpsite=urllib.urlopen(host+location+str(year))
+        ftpsite=urllib2.urlopen(host+location+str(year))
 
         html_dump=ftpsite.readlines()
     except KeyboardInterrupt:
@@ -99,17 +99,29 @@ def GetFileListing(host,location,year):
     except:
         raise UserWarning("FTP file listing failure")
 
-    return html_dump # GetFileListing
+    # write out to file to save doing this for each station.
+    if year != "":
+        outfile = file("input_files/isd_ftp_list_{}.txt".format(year), "w")
+    else:
+        outfile = file("input_files/isd_ftp_list_parent.txt", "w")
+        
+    for line in html_dump:
+        outfile.write(line)
+    outfile.close()
+
+    return # GetFileListing
 
 #*********************************************
-def ExtractFileData(file_list):
+def ExtractFileData(file_list, directory = False):
     """
-    Extract all the filenames, creation dates and sizes
+    Extract all the file/directory names, creation dates (and sizes)
 
     Convert the sizes to integers and the file modified 
     date to datetime objects
 
     Just parses HTML - possibly could be improved
+
+    directory = sets if keeping only directory info
     """
 
     data_files=[]
@@ -127,11 +139,18 @@ def ExtractFileData(file_list):
 
         file_creation_date = datetime.datetime.strptime(file_list[row][8:-6] ,"%a %b %d %H:%M:%S %Y")    
 
-        size = float(file_list[row+1][4:-6])
+        if directory:
+            size = file_list[row+1][4:-6]
+        else:
+            size = float(file_list[row+1][4:-6])
 
         file_name = file_list[row+2][file_list[row+2].find('"')+1:file_list[row+2].rfind('"')]       
 
-        data_files.append(DataFile(file_name,file_creation_date,size))
+        if directory:
+            if size == "Directory":
+                data_files.append(DataFile(file_name[:-1],file_creation_date,0))
+        else:
+            data_files.append(DataFile(file_name,file_creation_date,size))
     # for line in file_list:
     #     if line[0]=="<":
     #         # ignore all HTML tag lines
@@ -149,18 +168,41 @@ def ExtractFileData(file_list):
     return data_files # ExtractFileData
 
 #*********************************************
-def CombineHadISDStations(filelist,outfile, uk=False):
+def CombineHadISDStations(filelist, outfile, uk=False, restart_id="", end_id=""):
     """
     Combine all the input station lists into one
     master list
     """
+
+    if restart_id == "" and end_id != "":
+        add_to_list = True
+    else:
+        add_to_list = False
 
     stationlist=[]
     # candidate_stations.txt
     try:
         with open(INPUT_FILE_LOCS+filelist[0],'r') as ifile:
             for line in ifile:
-                stationlist+=[line.split()[0].strip()]
+                station = line.split()[0].strip()
+
+                if restart_id == "" and end_id == "":
+                    #if no start/end - always add
+                    stationlist+=[station]
+              
+                if restart_id == station:
+                    # if start set, then add, and all subsequent
+                    add_to_list = True
+
+                if add_to_list:
+                    # add all intervening
+                    stationlist+=[station]
+
+                # separate test to terminate addition to list.
+                if end_id == station:
+                    # if end set, then add, but no subsequent
+                    #    all previous set before try loop
+                    add_to_list = False
 
     except IOError:
         print "Could not find station list file ", filelist[0]
@@ -174,6 +216,8 @@ def CombineHadISDStations(filelist,outfile, uk=False):
 
     except IOError:
         print "Could not find station list file ", filelist[1]
+    except IndexError:
+        print "Single file only", filelist
 
     stationlist=sorted(set(stationlist))
 
@@ -422,21 +466,20 @@ def DeleteFiles(ToDelete, year, verbose = False):
                 
     return # DeleteFiles
 
-#------------------------------------------------------------
+#*********************************************
+def main(STARTYEAR, ENDYEAR, restart_id="", end_id="", GetDirList = False):
+    """
+    Call all other routines
 
+    Set start and end years to download
+    Allow for range of stations to be processed
+    """
+    if restart_id != "":
+        print "Restart ID: {}".format(restart_id)
+    if end_id != "":
+        print "End ID: {}".format(end_id)
 
-if __name__ == "__main__":
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--start', dest='STARTYEAR', action='store', default = 1931,
-                        help='Start year, default = 1931')
-    parser.add_argument('--end', dest='ENDYEAR', action='store', default = datetime.datetime.now().year,
-                        help='End year, default = current')
-
-    args = parser.parse_args()
-
-    STARTYEAR=int(args.STARTYEAR)
-    ENDYEAR=int(args.ENDYEAR)
+    # When was last download time?
 
     # extract last download time 
     #    test both old and new location (in case it's an updating download)
@@ -471,6 +514,15 @@ if __name__ == "__main__":
     print "Downloading or copying data from {} to {}".format(OLD_ISD_DATA_LOCS,ISD_DATA_LOCS)
 
 
+    # output record of when last download occurred
+    try:
+        logfile=ISD_DATA_LOCS+r'last_download.txt'
+        with open(logfile,'w') as lf:
+            lf.write("Last download commenced at %s \n" %  datetime.datetime.now().strftime('%d-%m-%Y %H:%M'))
+    except:
+        print "Could not create log file "+ISD_DATA_LOCS+r'last_download.txt'
+        sys.exit()
+
     # extra diagnostic output
     IsVerbose=True
     
@@ -488,12 +540,29 @@ if __name__ == "__main__":
     print datetime.datetime.now().strftime('%d-%m-%Y %H:%M')
 
     # make overall list - required if any of the station input files change
-    CombineHadISDStations(STATIONLISTFILES,'MasterList.txt')
+    CombineHadISDStations(STATIONLISTFILES,'MasterList.txt', restart_id = restart_id, end_id = end_id)
     
+    # get list of folders on server (parent directory to all of the years)
+    GetFileListing(HOST, ISD_LOC)
+    folder_list_file = file("input_files/isd_ftp_list_parent.txt", "r")
+    folder_list = folder_list_file.readlines()
+    folder_list = ExtractFileData(folder_list, directory = True)
+                              
     for year in range(STARTYEAR,ENDYEAR+1):
 
-        # get list of files on server
-        dir_list=GetFileListing(HOST,ISD_LOC,year)
+        for folder in folder_list:
+            if folder.filen == str(year):
+                last_folder_change = folder.date
+                break
+
+        # have there been any updates to this folder since the last run
+        if last_folder_change > lastrun or GetDirList:
+            # if so, get list of files on server
+            GetFileListing(HOST,ISD_LOC,year = year)
+
+        # now read in the list.
+        dir_list_file = file("input_files/isd_ftp_list_{}.txt".format(year), "r")
+        dir_list = dir_list_file.readlines()
 
         # get list of files & properties on server using DataFile Class
         isd_files=ExtractFileData(dir_list)
@@ -511,19 +580,44 @@ if __name__ == "__main__":
         print "\n*****Deleting*****\n"
         DeleteFiles(FileDeleteList, year, verbose=IsVerbose)
 
-        print "\nCompleted year %i\n" % year
+        print "\nCompleted year %i\n %s" % (year, datetime.datetime.now().strftime('%d-%m-%Y %H:%M'))
     # move to next year
-
-    # output record of when last download occurred
-    try:
-        logfile=ISD_DATA_LOCS+r'last_download.txt'
-        with open(logfile,'w') as lf:
-            lf.write("Last download completed at %s \n" %  datetime.datetime.now().strftime('%d-%m-%Y %H:%M'))
-    except:
-        print "Could not create log file "+ISD_DATA_LOCS+r'last_download.txt'
-        sys.exit()
+        #raw_input("stop")
 
     print "finished"
     print datetime.datetime.now().strftime('%d-%m-%Y %H:%M')
+
+#------------------------------------------------------------
+
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--start', dest='STARTYEAR', action='store', default = 1931,
+                        help='Start year, default = 1931')
+    parser.add_argument('--end', dest='ENDYEAR', action='store', default = datetime.datetime.now().year,
+                        help='End year, default = current')
+    parser.add_argument('--restart_id', dest='restart_id', action='store', default = "",
+                        help='Restart ID for truncated run, default = ""')
+    parser.add_argument('--end_id', dest='end_id', action='store', default = "",
+                        help='End ID for truncated run, default = ""')
+    parser.add_argument('--get_dir_list', dest='get_dir_list', action='store_true', default = False,
+                        help='update the directory listings, default = False')
+
+    args = parser.parse_args()
+
+    STARTYEAR=int(args.STARTYEAR)
+    ENDYEAR=int(args.ENDYEAR)
+    restart_id=args.restart_id
+    end_id=args.end_id
+    get_dir_list=args.get_dir_list
+
+    main(STARTYEAR, ENDYEAR, restart_id = restart_id, end_id = end_id, GetDirList = get_dir_list)
+
+    print "***************************************************"
+    print " NOW CHECK THAT THE FILES DOWNLOADED SUCCESSFULLY "
+    print " SEE IF FILES ON FTP WERE UPDATED DURING TRANSFER "
+    print "***************************************************"
+
 #------------------------------------------------------------
 # END

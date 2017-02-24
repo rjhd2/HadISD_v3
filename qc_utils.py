@@ -6,9 +6,9 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 108                                           $:  Revision of last commit
+#$Rev:: 117                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2016-09-19 13:56:07 +0100 (Mon, 19 Sep 2016) $:  Date of last commit
+#$Date:: 2017-01-30 15:33:46 +0000 (Mon, 30 Jan 2017) $:  Date of last commit
 #************************************************************************
 
 import numpy as np
@@ -151,7 +151,7 @@ def create_fulltimes(station, var_list, start, end, opt_var_list = [], do_input_
             # use masked arrays for ease of filtering later
             new = np.zeros([len(fulltimes), qc_var.shape[1]])
 
-            new[match, :] = qc_var[:]
+            new[match, :] = qc_var[match_reverse, :]
 
             station.qc_flags = new
 
@@ -212,12 +212,15 @@ def month_starts_in_pairs(start, end):
     return month_ranges # month_starts_in_pairs
 
 #*********************************************
-def reporting_accuracy(indata):
+def reporting_accuracy(indata, winddir = False, plots = False):
     '''
     Following reporting_accuracy.pro method.
     Uses histogram of remainders to look for special values
 
     :param array indata: masked array
+    :param bool winddir: true if processing wind directions
+    :param bool plots: make plots (winddir only)
+
     :output: resolution - reporting accuracy (resolution) of data
     '''
     
@@ -225,22 +228,52 @@ def reporting_accuracy(indata):
     good_values = indata.compressed()
 
     resolution = -1
-    if len(good_values) > 0:
-        
-        remainders = np.abs(good_values) - np.floor(np.abs(good_values))
+    if winddir:
+        # 360/36/16/8/ compass points ==> 1/10/22.5/45/90 deg resolution
+        if len(good_values) > 0:
 
-        hist, binEdges = np.histogram(remainders, bins = np.arange(-0.05,1.05,0.1))
+            hist, binEdges = np.histogram(good_values, bins = np.arange(0,362,1))
 
-        # normalise
-        hist = hist / float(sum(hist))
+            # normalise
+            hist = hist / float(sum(hist))
 
-        if hist[0] >= 0.3:
-            if hist[5] >= 0.15:
-                resolution = 0.5
+            #
+            if sum(hist[np.arange(90,360+90,90)]) >= 0.6:
+                resolution = 90
+            elif sum(hist[np.arange(45,360+45,45)]) >= 0.6:
+                resolution = 45
+            elif sum(hist[np.round(0.1 + np.arange(22.5,360+22.5,22.5)).astype("int")]) >= 0.6:
+                # added 0.1 because of floating point errors!
+                resolution = 22
+            elif sum(hist[np.arange(10,360+10,10)]) >= 0.6:
+                resolution = 10
             else:
-                resolution = 1.0
-        else:
-            resolution = 0.1
+                resolution = 1
+
+            print "Wind dir resolution = {} degrees".format(resolution)
+            if plots:
+                import matplotlib.pyplot as plt
+                plt.clf()
+                plt.hist(good_values, bins = np.arange(0,362,1))
+                plt.show()
+        
+    else:
+        if len(good_values) > 0:
+
+            remainders = np.abs(good_values) - np.floor(np.abs(good_values))
+
+            hist, binEdges = np.histogram(remainders, bins = np.arange(-0.05,1.05,0.1))
+
+            # normalise
+            hist = hist / float(sum(hist))
+
+            if hist[0] >= 0.3:
+                if hist[5] >= 0.15:
+                    resolution = 0.5
+                else:
+                    resolution = 1.0
+            else:
+                resolution = 0.1
 
     return resolution # reporting_accuracy
 
@@ -504,7 +537,7 @@ def get_dist_and_bearing(coord1,coord2):
 
     distance = arc * R
 
-    return distance.astype("int"), bearing.astype("int")
+    return distance.astype("int"), bearing.astype("int") # get_dist_and_bearing
 
 #************************************************************************
 def concatenate_months(month_ranges, data, hours = True):
@@ -541,7 +574,7 @@ def concatenate_months(month_ranges, data, hours = True):
             year_ids.extend([y for x in range(this_year.shape[0])])
             
 
-    return this_month, year_ids, datacount # 
+    return this_month, year_ids, datacount # concatenate_months
 
 #************************************************************************
 def mask_old(station, var_list):
@@ -566,35 +599,32 @@ def mask_old(station, var_list):
 
     station = append_history(station, "Masking")
 
-    return station
+    return station # mask_old
 
 #************************************************************************
-def mask(station, var_list, logfile):
+def mask(station, var_list, logfile, FLAG_COL_DICT):
     '''
     Apply the flags to the data and copy across to storage attribute
     Uses flag array rather than built in system
 
     :param object station: station object
     :param list var_list: list of variables to process
+    :param file logfile: log file to write to
+    :param dict FLAG_COL_DICT: dictionary of flag columns to apply
+
     :returns:
         station - updated station
     '''
-    FLAG_COL_DICT = {"temperatures":np.array([0,1,4,5,8,12,16,20,24,27,41,44,54,58]),
-                     "dewpoints":np.array([0,2,4,6,8,9,13,17,21,25,28,30,31,32,42,45,55,59]),
-                     "slp":np.array([0,3,4,7,11,15,19,23,26,29,43,48,57,60]), 
-                     "windspeeds":np.array([0,4,10,14,18,22,46,56,62,63,64]), 
-                     "winddirs":np.array([0,4,10,14,18,22,48,56,62,63,64]),
-                     "total_cloud_cover":[33,37,40],
-                     "low_cloud_cover":[34,38,40],
-                     "mid_cloud_cover":[35,38,39,40],
-                     "high_cloud_cover":[36,38,39,40]}
-
-
 
     for variable in var_list:
         st_var = getattr(station, variable)
 
-        flags = np.sum(station.qc_flags[:, FLAG_COL_DICT[variable]], axis = 1)
+        # winds logical test notes recovered directions with -1 flag
+        temp_flags = station.qc_flags[:, FLAG_COL_DICT[variable]]
+        neg_locs = np.where(temp_flags < 0)
+        temp_flags[neg_locs] = 0
+
+        flags = np.sum(temp_flags, axis = 1)
 
         flag_locs = np.ma.where(flags != 0)
 
@@ -609,7 +639,7 @@ def mask(station, var_list, logfile):
 
     station = append_history(station, "Masking")
 
-    return station
+    return station # mask
 
 #************************************************************************
 def append_history(station, text):
@@ -622,8 +652,8 @@ def append_history(station, text):
     '''
 
     station.history = station.history + text + dt.datetime.strftime(dt.datetime.now(), " %Y-%m-%d, %H:%M \n")
-
-    return station
+    
+    return station # append_history
 
 #************************************************************************
 def monthly_reporting_statistics(st_var, start, end):
@@ -648,7 +678,7 @@ def monthly_reporting_statistics(st_var, start, end):
 
         reporting_stats[m] = [reporting_frequency(st_var.data[month[0]:month[1]]),reporting_accuracy(st_var.data[month[0]:month[1]])]
 
-    return reporting_stats
+    return reporting_stats # monthly_reporting_statistics
 
 #***************************************
 def gausshermiteh3h4(x, A, x0, s, h3, h4):
@@ -667,7 +697,7 @@ def gausshermiteh3h4(x, A, x0, s, h3, h4):
     F = (x-x0)/s
     E = A*np.exp(-0.5*F*F)*( 1.0 + h3*F*(c3*F*F+c1) + h4*(c0+F*F*(c2+c4*F*F)) )
 
-    return E #gausshermiteh3h4
+    return E # gausshermiteh3h4
 
 
 #***************************************
@@ -880,7 +910,7 @@ def get_critical_values(indata, binmin = 0, binwidth = 1, plots = False, diagnos
     else:
         threshold = max(indata) + binwidth
  
-    return threshold
+    return threshold # get_critical_values
 
 #************************************************************************
 def apply_flags_all_variables(station, all_variables, flag_col, logfile, test_name, plots = False, diagnostics = False):
@@ -953,4 +983,4 @@ http://stackoverflow.com/questions/558216/function-to-determine-if-two-numbers-a
 
     return ( a==b or 
              int(a*10**sig_fig) == int(b*10**sig_fig)
-           )
+           ) # nearly_equal

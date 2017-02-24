@@ -6,9 +6,9 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 108                                           $:  Revision of last commit
+#$Rev:: 117                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2016-09-19 13:56:07 +0100 (Mon, 19 Sep 2016) $:  Date of last commit
+#$Date:: 2017-01-30 15:33:46 +0000 (Mon, 30 Jan 2017) $:  Date of last commit
 #************************************************************************
 
 
@@ -32,11 +32,16 @@ import qc_tests
 
 # look-up dictionaries for flag columns for different parts of this test
 FLAG_OUTLIER_DICT = {"temperatures": 41, "dewpoints": 42, "slp": 43}
-FLAG_COL_DICT = {"temperatures":np.array([0,1,4,5,8,12,16,20,24,27,41,54,58]),
-                  "dewpoints":np.array([0,2,4,6,8,9,13,17,21,25,28,30,31,32,42,55,59]),
-                  "slp":np.array([0,3,4,7,11,15,19,23,26,29,43,57,60]), 
-                  "windspeeds":np.array([0,4,10,14,18,22,56,62,63,64]), 
-                  "winddirs":np.array([0,4,10,14,18,22,56,62,63,64])}
+FLAG_COL_DICT = { "temperatures":np.array([0,1,4,5,8,12,16,20,24,27,41,44,54,58]),
+                  "dewpoints":np.array([0,2,4,6,8,9,13,17,21,25,28,30,31,32,42,45,55,59]),
+                  "slp":np.array([0,3,4,7,11,15,19,23,26,29,43,46,57,60]), # 26 should be empty
+                  "windspeeds":np.array([0,4,10,14,18,22,47,56,61,62,63,64,65]), 
+                  "winddirs":np.array([0,4,10,14,18,22,47,48,56,61,62,63,64,65,66,67,68]),
+                  "clouds": np.array([33,34,35,36,37,38,39,40]), # for completeness, but unused
+                  "total_cloud_cover":[33,37,40],
+                  "low_cloud_cover":[34,38,40],
+                  "mid_cloud_cover":[35,38,39,40],
+                  "high_cloud_cover":[36,38,39,40]}
 
 N_NEIGHBOURS = 10
 
@@ -276,7 +281,6 @@ def neighbour_checks(station_info, restart_id = "", end_id = "", distances=np.ar
                         logfile.write("No observations to assess for {}\n".format(variable))
                     
 
-
             # variable loop
         else:
             if plots or diagnostics:
@@ -288,11 +292,11 @@ def neighbour_checks(station_info, restart_id = "", end_id = "", distances=np.ar
         print "processing took {:4.0f}s\n\n".format(time.time() - process_start_time)
 
         # end of neighbour check
-	utils.append_history(station, "Neighbour Outlier Check")
-
+        utils.append_history(station, "Neighbour Outlier Check")
+        
         # clean up months 
 
-        qc_tests.clean_up.clu(station, ["temperatures","dewpoints","windspeeds","winddirs","slp"], [44,45,46,47,48], FLAG_COL_DICT, DATASTART, DATAEND, logfile, plots = plots)
+        qc_tests.clean_up.clu(station, ["temperatures","dewpoints","slp","windspeeds","winddirs"], [44,45,46,47,48], FLAG_COL_DICT, DATASTART, DATAEND, logfile, plots = plots, diagnostics = diagnostics)
 
 
         if diagnostics or plots: raw_input("stop")
@@ -311,9 +315,9 @@ def neighbour_checks(station_info, restart_id = "", end_id = "", distances=np.ar
         # masking - apply the flags and copy masked data to flagged_obs attribute
         if masking:
 
-            station = utils.mask(station, process_vars, logfile)
+            station = utils.mask(station, process_vars, logfile, FLAG_COL_DICT)
 
-        # write to file
+            # write to file
             if first:
                 ncdfp.write(os.path.join(NETCDF_DATA_LOCS, station.id + "_mask.nc"), station, process_vars, os.path.join(INPUT_FILE_LOCS,'attributes.dat'), opt_var_list = carry_thru_vars, compressed = match_to_compress, processing_date = '', qc_code_version = qc_code_version)
             elif second:
@@ -329,6 +333,8 @@ def neighbour_checks(station_info, restart_id = "", end_id = "", distances=np.ar
             logfile.write("processing took {:4.0f}s\n\n".format(time.time() - process_start_time))
             logfile.close()
             
+    # looped through all stations
+
     # gzip up all the raw files
     if doZip:
         for st, stat in enumerate(station_info):       

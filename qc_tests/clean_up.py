@@ -8,9 +8,9 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 62                                            $:  Revision of last commit
+#$Rev:: 114                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2015-04-30 17:03:29 +0100 (Thu, 30 Apr 2015) $:  Date of last commit
+#$Date:: 2017-01-17 17:26:42 +0000 (Tue, 17 Jan 2017) $:  Date of last commit
 #************************************************************************
 import numpy as np
 import scipy as sp
@@ -116,7 +116,7 @@ def clean_up(st_var, flags, input_flag_cols, out_flag_col, start, end, times, pl
     return # clean_up
 
 #*******************************************************
-def clu(station, var_list, flag_cols, FLAG_COL_DICT, start, end, logfile, plots = False):
+def clu(station, var_list, flag_cols, FLAG_COL_DICT, start, end, logfile, plots = False, diagnostics = False):
     '''
     Run the clean up for each variable
 
@@ -132,7 +132,7 @@ def clu(station, var_list, flag_cols, FLAG_COL_DICT, start, end, logfile, plots 
 
         flag_locs = np.where(station.qc_flags[:, flag_cols[v]] != 0)
 
-        if plots:
+        if plots or diagnostics:
             utils.print_flagged_obs_number(logfile, "Clean Up Months", variable, len(flag_locs[0]), noWrite = True)
         else:
             utils.print_flagged_obs_number(logfile, "Clean Up Months", variable, len(flag_locs[0]))

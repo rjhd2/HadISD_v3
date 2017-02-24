@@ -6,9 +6,9 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 108                                           $:  Revision of last commit
+#$Rev:: 114                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2016-09-19 13:56:07 +0100 (Mon, 19 Sep 2016) $:  Date of last commit
+#$Date:: 2017-01-17 17:26:42 +0000 (Tue, 17 Jan 2017) $:  Date of last commit
 #************************************************************************
 
 import numpy as np
@@ -113,9 +113,10 @@ def make_hum_heat_vars(station_info, restart_id = "", end_id = "", diagnostics =
 
         heat_stress_vars = ["temperatures","dewpoints","windspeeds","THI","WBGT","humidex","apparent_t","heat_index"]
         ncdfp.write(os.path.join(NETCDF_DATA_LOCS, station.id + "_heat_stress.nc"), station, heat_stress_vars, os.path.join(INPUT_FILE_LOCS,'attributes.dat'), compressed = match_to_compress, processing_date = '', qc_code_version = '', write_QC_flags = False, write_flagged_obs = False, least_significant_digit = 5)
+
         # gzip the raw file
-        subprocess.call(["gzip","-f",os.path.join(NETCDF_DATA_LOCS, station.id + "_humidity.nc")])
-        subprocess.call(["gzip","-f",os.path.join(NETCDF_DATA_LOCS, station.id + "_heat_stress.nc")])
+        # subprocess.call(["gzip","-f",os.path.join(NETCDF_DATA_LOCS, station.id + "_humidity.nc")])
+        # subprocess.call(["gzip","-f",os.path.join(NETCDF_DATA_LOCS, station.id + "_heat_stress.nc")])
         # subprocess.call(["gzip",os.path.join(NETCDF_DATA_LOCS, station.id + "_mask.nc")])
 
         logfile.write(dt.datetime.strftime(dt.datetime.now(), "%A, %d %B %Y, %H:%M:%S\n"))

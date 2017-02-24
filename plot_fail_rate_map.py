@@ -6,9 +6,9 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 108                                           $:  Revision of last commit
+#$Rev:: 120                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2016-09-19 13:56:07 +0100 (Mon, 19 Sep 2016) $:  Date of last commit
+#$Date:: 2017-02-24 10:34:07 +0000 (Fri, 24 Feb 2017) $:  Date of last commit
 #************************************************************************
 
 import numpy as np
@@ -28,25 +28,28 @@ from set_paths_and_vars import *
 #*******************************************************
 qc_test=['DUP','TFV','DFV','SFV','DNL','TGP','DGP','SGP','TRC','DRC',\
 	  'WRC','PRC','TSS','DSS','WSS','PSS','HTS','HDS','HWS','HPS',\
-	  'DTS','DDS','DWS','DPS','TCM','DCM','PCM','TSP','DSP','PSP',\
+	  'DTS','DDS','DWS','DPS','TCM','DCM','PCM','TSP','DSP','PSP','WSP'\
 	  'SSS','DPD','DCF','CUOT','CUOL','CUOM','CUOH','CST','FLW','FMC',\
 	  'NGC','TOT','DOT','SOT','TMB','DMB','SMB','WMB','BBB','CMB',\
 	  'LMB','MMB','HMB','BMB','OCT','OCD','OCW','OCS','TVR','DVR',\
 	  'SVR','WVR','WSL','WDL','WRS','STR_T','STR_D','STR_w','STR_S','ALL_T','ALL_Td','ALL_SLP','ALL_W','ACL']
 
+# list of tests not the same as where they were applied to!
 T_QC=[0,1,4,5,8,12,16,20,24,27,41,44,54,58]
 D_QC=[0,2,4,6,8,9,13,17,21,25,28,30,31,32,42,45,55,59]
-S_QC=[0,3,4,7,11,15,19,23,26,29,43,46,57,60]
-W_QC=[10,14,18,22,47,56,61,62,63,64]
+S_QC=[0,3,4,7,11,15,19,23,26,29,43,46,57,60] # 26 should be empty
+WS_QC=[0,10,14,18,22,47,56,61,62,63,64,65]
+WD_QC=[0,10,14,18,22,47,48,56,61,62,63,64,65,66,67,68]
 C_QC=range(33,41)
 
 strT_QC=[12,16,20]
 strD_QC=[13,17,21]
-strW_QC=[14,18,22]
+strWS_QC=[14,18,22]
+strWD_QC=[66,67,68]
 strS_QC=[15,19,23]
 
 station_list = "candidate_stations.txt"
-process_vars = ["temperatures","dewpoints","slp","windspeeds","total_cloud_cover"]
+process_vars = ["temperatures","dewpoints","slp","windspeeds","winddirs","total_cloud_cover"]
 diagnostics = False
 start_time_string = dt.datetime.strftime(dt.datetime.now(), "%Y%m%d")
 
@@ -57,7 +60,7 @@ except IOError:
     sys.exit()
 
 
-all_flag_sums = np.zeros([len(station_info), len(qc_test)])
+all_flag_sums = np.zeros([len(station_info), len(qc_test)+6])
 all_flag_pct  = np.zeros([len(station_info), len(qc_test)])
 
 Lons = []
@@ -93,7 +96,7 @@ for st,stat in enumerate(station_info):
 
     sum_flags = np.sum(qc_flags[:], axis = 0) # 61 column array
 
-    for cols in [strT_QC, strD_QC, strW_QC, strS_QC, T_QC, D_QC, S_QC, W_QC, C_QC]:
+    for cols in [strT_QC, strD_QC, strWS_QC, strWD_QC, strS_QC, T_QC, D_QC, S_QC, WS_QC, WD_QC, C_QC]:
 
         sum_flags = np.append(sum_flags, np.sum(sum_flags[cols]))
 
@@ -114,9 +117,12 @@ for st,stat in enumerate(station_info):
         elif t in S_QC:
             if station.slp.data.compressed().size > 0:
                 pct_flag[t] = sum_flags[t] / station.slp.data.compressed().size
-        elif t in W_QC:
+        elif t in WS_QC:
             if station.windspeeds.data.compressed().size > 0:
                 pct_flag[t] = sum_flags[t] / station.windspeeds.data.compressed().size
+        elif t in WD_QC:
+            if station.winddirs.data.compressed().size > 0:
+                pct_flag[t] = sum_flags[t] / station.winddirs.data.compressed().size
         elif t in C_QC:
             if station.total_cloud_cover.data.compressed().size > 0:
                 pct_flag[t] = sum_flags[t] / station.total_cloud_cover.data.size

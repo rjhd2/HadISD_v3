@@ -6,9 +6,9 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 107                                           $:  Revision of last commit
+#$Rev:: 112                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2016-07-29 15:38:24 +0100 (Fri, 29 Jul 2016) $:  Date of last commit
+#$Date:: 2017-01-13 14:47:17 +0000 (Fri, 13 Jan 2017) $:  Date of last commit
 #************************************************************************
 
 
@@ -164,7 +164,7 @@ def internal_checks(station_info, restart_id = "", end_id = "", second = False,
 
             match_to_compress = utils.create_fulltimes(station, process_vars, DATASTART, DATAEND, carry_thru_vars)
 
-            station.qc_flags = np.zeros([len(station.time.data),65])
+            station.qc_flags = np.zeros([len(station.time.data),69]) # changed to include updated wind tests
 
             # get reporting accuracies and frequencies.
 
@@ -219,7 +219,7 @@ def internal_checks(station_info, restart_id = "", end_id = "", second = False,
 
         # Streaks and Repetitions 
         if streaks:
-            qc_tests.streaks.rsc(station, ['temperatures','dewpoints','windspeeds','slp'], [[12,16,20],[13,17,21],[14,18,22],[15,19,23]], DATASTART, DATAEND, logfile, diagnostics = diagnostics, plots = plots)
+            qc_tests.streaks.rsc(station, ['temperatures','dewpoints','windspeeds','slp','winddirs'], [[12,16,20],[13,17,21],[14,18,22],[15,19,23],[66,67,68]], DATASTART, DATAEND, logfile, diagnostics = diagnostics, plots = plots)
             utils.apply_windspeed_flags_to_winddir(station, diagnostics = diagnostics)
 
         # Climatological Outlier
@@ -229,7 +229,8 @@ def internal_checks(station_info, restart_id = "", end_id = "", second = False,
 
         # Spike
         if spike:
-            qc_tests.spike.sc(station, ['temperatures','dewpoints','slp'], [27,28,29], DATASTART, DATAEND, logfile, diagnostics = diagnostics, plots = plots, second = second)
+            qc_tests.spike.sc(station, ['temperatures','dewpoints','slp','windspeeds'], [27,28,29,65], DATASTART, DATAEND, logfile, diagnostics = diagnostics, plots = plots, second = second)
+            utils.apply_windspeed_flags_to_winddir(station, diagnostics = diagnostics)
 
         # Humidity cross checks
         if humidity:

@@ -6,9 +6,9 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 103                                           $:  Revision of last commit
+#$Rev:: 116                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2016-07-26 10:41:19 +0100 (Tue, 26 Jul 2016) $:  Date of last commit
+#$Date:: 2017-01-30 15:24:24 +0000 (Mon, 30 Jan 2017) $:  Date of last commit
 #************************************************************************
 
 import numpy as np
@@ -43,7 +43,7 @@ station_list = "candidate_stations.txt"
 # overwrite the global list
 process_vars = ["temperatures","dewpoints","slp","windspeeds","total_cloud_cover"]
 
-input_id = "035715-99999"
+input_id = "941020-99999"
 
 # set up plot objects
 
@@ -82,7 +82,7 @@ qc_test=['DUP','TFV','DFV','SFV','DNL','TGP','DGP','SGP','TRC','DRC',\
 	  'SSS','DPD','DCF','CUOT','CUOL','CUOM','CUOH','CST','FLW','FMC',\
 	  'NGC','TOT','DOT','SOT','TMB','DMB','SMB','WMB','BBB','CMB',\
 	  'LMB','MMB','HMB','BMB','OCT','OCD','OCW','OCS','TVR','DVR',\
-	  'SVR','WVR','WSL','WDL','WRS','STR_T','STR_D','STR_w','STR_S','ALL_T','ALL_Td','ALL_SLP','ACL']
+	  'SVR','WVR','WSL','WDL','WRS',"WSP","RSS","HRS","DRS"]
 # dictionary of tests
 qc_dict={'DUP':QCtest("Duplicate", '0.5',0,1),
          'TFV':Frequent,
@@ -100,20 +100,24 @@ qc_dict={'DUP':QCtest("Duplicate", '0.5',0,1),
          'DSS':SString,
          'WSS':SString,
          'PSS':SString,
+         'RSS':SString,
          'HTS':HString,
          'HDS':HString,
          'HWS':HString,
          'HPS':HString,
+         'HRS':HString,
          'DTS':DString,
          'DDS':DString,
          'DWS':DString,
          'DPS':DString,
+         'DRS':DString,
          'TCM':Climatological,
          'DCM':Climatological,
          'PCM':Climatological,
          'TSP':Spike,
          'DSP':Spike,
          'PSP':Spike,
+         'WSP':Spike,
          'SSS':SuperSat,
          'DPD':DPD,
          'DCF':DewpCutOff,
@@ -156,11 +160,9 @@ qc_dict={'DUP':QCtest("Duplicate", '0.5',0,1),
 tests = {"temperatures" : [0,1,4,5,8,12,16,20,24,27,41,44,54,58],
          "dewpoints":[0,2,4,6,8,9,13,17,21,25,28,30,31,32,42,45,55,59],
          "slp":[0,3,4,7,11,15,19,23,26,29,43,46,57,60],
-         "windspeeds":[10,14,18,22,47,56,61,62,63,64],
+         "windspeeds":[0,4,10,14,18,22,47,56,61,62,63,64,65],
+         "winddirs":[0,4,10,14,18,22,47,48,56,61,62,63,64,65,66,67,68],
          'total_cloud_cover':range(33,41)}
-
-
-
 
 try:
     station_info = np.genfromtxt(os.path.join(INPUT_FILE_LOCS, station_list), dtype=(str))
@@ -203,40 +205,39 @@ for year in range(DATASTART.year, DATAEND.year):
 
     plot_qc_flags = station.qc_flags[plot_range[0]:plot_range[1],:]
 
-    plt.figure(figsize=(12, 12), dpi=100)
-    plt.clf()
 
+    fig, axes = plt.subplots(5, figsize = (12, 12), sharex=True, dpi = 100)
     MakePlot = False
     for v,var in enumerate(process_vars):
-
-        ax = plt.subplot(5, 1, v+1)
+        
+        ax = axes[v]
 
         plot_var = getattr(station, var)
         plot_data = plot_var.data[plot_range[0]:plot_range[1]]
 
+        # dummy points
         if len(plot_data.compressed()) > 0:
+            if v == 0: print "plotting {}".format(year)
             MakePlot = True
 
-            plt.plot(plot_times, plot_data, 'k.', zorder=3, alpha = 0.5)  # 'k,' gives pixel marker
+            ax.plot(plot_times, plot_data, 'k.', zorder=3, alpha = 0.5)  # 'k,' gives pixel marker
+            # dummy points
+            ax.plot([dt.datetime(year,1,1,0,0),dt.datetime(year,12,31,23,0)], plot_data.compressed()[:2], 'w.', zorder=0, alpha = 0.5)
 
-            ymin, ymax = plt.gca().get_ylim()
+            ymin, ymax = ax.get_ylim()
             if var == "windspeeds":
-                plt.ylim([-0.1*ymax, ymax])
+                ax.set_ylim([-0.1*ymax, ymax])
             elif var in ["total_cloud_cover","low_cloud_cover","mid_cloud_cover","high_cloud_cover"]:
-                plt.ylim([0, ymax])
+                ax.set_ylim([0, ymax])
                 
-
-            plt.ylabel(plot_var.name.capitalize())
-
-            if v != len(process_vars)-1:
-                plt.setp(ax.get_xticklabels(), visible=False)
+            ax.set_ylabel(plot_var.name.capitalize())
 
             # run through each test
             for test_number in tests[plot_var.name]:
 
                 these_flags = plot_qc_flags[:,test_number]
 
-                locs, = np.where(these_flags != 0)
+                locs, = np.where(these_flags > 0) # exclude note flags
 
                 test = qc_dict[qc_test[test_number]] # horrible coding
 
@@ -245,7 +246,12 @@ for year in range(DATASTART.year, DATAEND.year):
 
                     for loc in locs:
 
-                        plt.axvline(plot_times[loc], ymin = test.ymin, ymax = test.ymax, color = test.color, alpha=0.5)
+                        ax.axvline(plot_times[loc], ymin = test.ymin, ymax = test.ymax, color = test.color, alpha=0.5)
+        
+        else:
+            # dummy points
+            ax.plot([dt.datetime(year,1,1,0,0),dt.datetime(year,12,31,23,0)], [1,1], 'w.', zorder=3, alpha = 0.5)
+
 
     if MakePlot:
         # only show if there is something to show!
