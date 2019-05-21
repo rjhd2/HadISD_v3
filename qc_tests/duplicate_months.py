@@ -6,9 +6,9 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 55                                            $:  Revision of last commit
+#$Rev:: 219                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2015-02-06 16:38:46 +0000 (Fri, 06 Feb 2015) $:  Date of last commit
+#$Date:: 2019-05-20 16:56:47 +0100 (Mon, 20 May 2019) $:  Date of last commit
 #************************************************************************
 
 import numpy as np
@@ -159,10 +159,7 @@ def dmc(station, variable_list, full_variable_list, flag_col, start, end, logfil
             # source month
         # variable list
         flag_locs = np.where(station.qc_flags[:, flag_col[v]] != 0)
-        if plots or diagnostics:
-            utils.print_flagged_obs_number(logfile, "Duplicate Month", variable, len(flag_locs[0]), noWrite = True)
-        else:
-            utils.print_flagged_obs_number(logfile, "Duplicate Month", variable, len(flag_locs[0]))
+        utils.print_flagged_obs_number(logfile, "Duplicate Month", variable, len(flag_locs[0]), noWrite = diagnostics)
 
         # copy flags into attribute
         st_var.flags[flag_locs] = 1

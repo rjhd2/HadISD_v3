@@ -6,9 +6,9 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 55                                            $:  Revision of last commit
+#$Rev:: 219                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2015-02-06 16:38:46 +0000 (Fri, 06 Feb 2015) $:  Date of last commit
+#$Date:: 2019-05-20 16:56:47 +0100 (Mon, 20 May 2019) $:  Date of last commit
 #************************************************************************
 
 import numpy as np
@@ -57,7 +57,7 @@ def fvc_plot_setup(hist_data, hist, binEdges, xlabel, title = ""):
     return plot_hist, bincenters # fvc_plot_setup
 
 #************************************************************************
-def fvc(station, variable_list, flag_col, start, end, logfile, diagnostics = False, plots = False):
+def fvc(station, variable_list, flag_col, start, end, logfile, diagnostics = False, plots = False, doMonth = False):
     '''
     Check for certain values occurring more frequently than would be expected
     
@@ -69,6 +69,7 @@ def fvc(station, variable_list, flag_col, start, end, logfile, diagnostics = Fal
     :param file logfile: logfile to store outputs
     :param bool diagnostics: produce extra diagnostic output
     :param bool plots: produce plots
+    :param bool month: ignore months after last complete year/season for distribution
     '''
     
     MIN_DATA_REQUIRED = 500 # to create histogram for complete record
@@ -85,7 +86,7 @@ def fvc(station, variable_list, flag_col, start, end, logfile, diagnostics = Fal
         reporting_accuracy = utils.reporting_accuracy(utils.apply_filter_flags(st_var))
         
         # apply flags - for detection only
-        filtered_data = utils.apply_filter_flags(st_var)
+        filtered_data = utils.apply_filter_flags(st_var, doMonth = doMonth, start = start, end = end)
 
         for season in range(5): # Year,MAM,JJA,SON,JF+D
  
@@ -153,10 +154,11 @@ def fvc(station, variable_list, flag_col, start, end, logfile, diagnostics = Fal
 
 
                 if plots:
+                    import matplotlib.pyplot as plt
                     plt.step(bincenters, plot_hist, 'r-', where='mid')
                     plt.show()
             
-                # having identified possible bad bins, check each year in turn
+                # having identified possible bad bins, check each year in turn, on unfiltered data
                 for y,year in enumerate(month_ranges_years):
 
                     if season == 0:
@@ -187,7 +189,7 @@ def fvc(station, variable_list, flag_col, start, end, logfile, diagnostics = Fal
                         hist, binEdges = np.histogram(year_data.compressed(), bins = bins)
 
                         if plots:
-                            plot_hist, bincenters = fvc_plot_setup(hist, binEdges, st_var.name, title = "%s - %s" % (y+start.year, SEASONS[season]))
+                            plot_hist, bincenters = fvc_plot_setup(year_data.compressed(), hist, binEdges, st_var.name, title = "%s - %s" % (y+start.year, SEASONS[season]))
 
                         for e, element in enumerate(hist):
 
@@ -244,10 +246,7 @@ def fvc(station, variable_list, flag_col, start, end, logfile, diagnostics = Fal
                         station.qc_flags[year[-1][0]:year[-1][-1], flag_col[v]] = year_flags[split:]
  
         flag_locs = np.where(station.qc_flags[:, flag_col[v]] != 0)
-        if plots or diagnostics:
-            utils.print_flagged_obs_number(logfile, "Frequent Value", variable, len(flag_locs[0]), noWrite = True)
-        else:
-            utils.print_flagged_obs_number(logfile, "Frequent Value", variable, len(flag_locs[0]))
+        utils.print_flagged_obs_number(logfile, "Frequent Value", variable, len(flag_locs[0]), noWrite = diagnostics)
 
         # copy flags into attribute
         st_var.flags[flag_locs] = 1

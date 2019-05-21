@@ -1,9 +1,9 @@
 #!/usr/local/sci/bin/python2.7
 #------------------------------------------------------------
 #                    SVN Info
-#$Rev:: 116                                           $:  Revision of last commit
+#$Rev:: 219                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2017-01-30 15:24:24 +0000 (Mon, 30 Jan 2017) $:  Date of last commit
+#$Date:: 2019-05-20 16:56:47 +0100 (Mon, 20 May 2019) $:  Date of last commit
 #------------------------------------------------------------
 # History:
 #  16 - Created and tested
@@ -20,17 +20,35 @@
 #------------------------------------------------------------
 # START
 '''
+get_isd_files.py invoked by typing::
+
+  python2.7 get_isd_file.py --start 1931 --end 2018 --restart_id 000000-99999 --end_id 999999-99999 --get_dir_list
+
 Re-run the FTP scrape, checking if files need updating, 
 and only download those that do.
 
-Rsync style of capability - downloads new, 
-or copies old if no change, or leaves alone if
-new files still most recent.  Deletes files locally
-if not present on server
+Input Arguments:
 
-Had issues with urlretrieve and file sizes and so have a doftp call
-using os.system as a failsafe backup (Jan2013)
+--start		[1931] first year downloaded
+
+--end		[current] last year downloaded
+
+--restart_id	first station ID to download
+
+--end_id	last station ID to download
+
+--get_dir_list	[True] get file listings of server.  This takes time so
+		if run for a single/subset of stations cached
+		versions may be useful
+
+Rsync style of capability - downloads new, or copies old if no change, or leaves alone if
+new files still most recent.  Deletes files locally if not present on server
 '''
+
+
+# Had issues with urlretrieve and file sizes and so have a doftp call
+# using os.system as a failsafe backup (Jan2013)
+
 
 import urllib2
 import datetime
@@ -39,6 +57,7 @@ import shutil
 import sys
 import subprocess
 import argparse
+import calendar
 
 # RJHD utils
 from set_paths_and_vars import *
@@ -48,7 +67,7 @@ from set_paths_and_vars import *
 HOST='ftp://ftp.ncdc.noaa.gov'
 ISD_LOC='/pub/data/noaa/'
 
-STATIONLISTFILES=["candidate_stations.txt","final_mergers.txt"]
+STATIONLISTFILES=[STATION_LIST, MERGER_LIST]
 
         
 #---------------------------------------------------------------------
@@ -101,9 +120,9 @@ def GetFileListing(host,location,year = ""):
 
     # write out to file to save doing this for each station.
     if year != "":
-        outfile = file("input_files/isd_ftp_list_{}.txt".format(year), "w")
+        outfile = file("{}/isd_ftp_list_{}.txt".format(INPUT_FILE_LOCS, year), "w")
     else:
-        outfile = file("input_files/isd_ftp_list_parent.txt", "w")
+        outfile = file("{}/isd_ftp_list_parent.txt".format(INPUT_FILE_LOCS), "w")
         
     for line in html_dump:
         outfile.write(line)
@@ -129,28 +148,74 @@ def ExtractFileData(file_list, directory = False):
     nlines = len(file_list)
 
     for table_start,line in enumerate(file_list):
-        if line[:7] == "<table>":
+        if line[:6] == "</pre>":
             break
 
-    for row in range(table_start+1,nlines,3):
+    for row in range(table_start+2, nlines):
 
-        if file_list[row][:8] == "</tbody>":
+        # first line of footer
+        if file_list[row][:6] == "</pre>":
             break
+        
+        # first line of data mixed into header
+        if file_list[row][:5] == "<pre>":
+            line = file_list[row].split("</h4>")[1]
+        else:
+            line = file_list[row]
 
-        file_creation_date = datetime.datetime.strptime(file_list[row][8:-6] ,"%a %b %d %H:%M:%S %Y")    
+        try:
+            # two creation formats
+            file_creation_date = datetime.datetime.strptime(line.split("<")[0][-13:-1] ,"%b %d %Y")    
+        except:
+            # if date in last 6 months then linux gives no year - so need to take care on year boundary
+            month_abbr = line.split("<")[0][-13:-1].split(" ")[0]
+            month = list(calendar.month_abbr).index(month_abbr)
+
+            if month > dt.datetime.now().month:
+                file_creation_date = datetime.datetime.strptime("{} {}".format(line.split("<")[0][-13:-1], dt.datetime.now().year-1) ,"%b %d %H:%M %Y")    
+            else:
+                file_creation_date = datetime.datetime.strptime("{} {}".format(line.split("<")[0][-13:-1], dt.datetime.now().year) ,"%b %d %H:%M %Y")    
+
 
         if directory:
-            size = file_list[row+1][4:-6]
+            size = line[33:41]
         else:
-            size = float(file_list[row+1][4:-6])
+            size = float(line[33:41])
 
-        file_name = file_list[row+2][file_list[row+2].find('"')+1:file_list[row+2].rfind('"')]       
+        file_name = line.split(">")[1][:-3]       
 
         if directory:
             if size == "Directory":
                 data_files.append(DataFile(file_name[:-1],file_creation_date,0))
         else:
             data_files.append(DataFile(file_name,file_creation_date,size))
+
+    ########## OLD 2
+    # for table_start,line in enumerate(file_list):
+    #     if line[:7] == "<table>":
+    #         break
+
+    # for row in range(table_start+1,nlines,3):
+
+    #     if file_list[row][:8] == "</tbody>":
+    #         break
+
+    #     file_creation_date = datetime.datetime.strptime(file_list[row][8:-6] ,"%a %b %d %H:%M:%S %Y")    
+
+    #     if directory:
+    #         size = file_list[row+1][4:-6]
+    #     else:
+    #         size = float(file_list[row+1][4:-6])
+
+    #     file_name = file_list[row+2][file_list[row+2].find('"')+1:file_list[row+2].rfind('"')]       
+
+    #     if directory:
+    #         if size == "Directory":
+    #             data_files.append(DataFile(file_name[:-1],file_creation_date,0))
+    #     else:
+    #         data_files.append(DataFile(file_name,file_creation_date,size))
+
+    ########## OLD 1
     # for line in file_list:
     #     if line[0]=="<":
     #         # ignore all HTML tag lines
@@ -167,14 +232,14 @@ def ExtractFileData(file_list, directory = False):
         
     return data_files # ExtractFileData
 
+
 #*********************************************
 def CombineHadISDStations(filelist, outfile, uk=False, restart_id="", end_id=""):
     """
     Combine all the input station lists into one
     master list
     """
-
-    if restart_id == "" and end_id != "":
+    if restart_id == "":
         add_to_list = True
     else:
         add_to_list = False
@@ -186,10 +251,6 @@ def CombineHadISDStations(filelist, outfile, uk=False, restart_id="", end_id="")
             for line in ifile:
                 station = line.split()[0].strip()
 
-                if restart_id == "" and end_id == "":
-                    #if no start/end - always add
-                    stationlist+=[station]
-              
                 if restart_id == station:
                     # if start set, then add, and all subsequent
                     add_to_list = True
@@ -211,8 +272,15 @@ def CombineHadISDStations(filelist, outfile, uk=False, restart_id="", end_id="")
     try:
         with open(INPUT_FILE_LOCS+filelist[1],'r') as ifile:
             for line in ifile:
+                station = line.split()[0].strip()
                 line=line.split()
-                stationlist.extend(line[1:])
+
+                if station in stationlist:
+                    # if the primary source station present, then add, else not
+                    stationlist.extend(line[1:])
+                    # removes need for restart and end IDs as only add to list
+                    #  if the primary station is present in the first place
+                    #  which has been set by the loop above.                    
 
     except IOError:
         print "Could not find station list file ", filelist[1]
@@ -339,7 +407,7 @@ def DownloadChecks(file_path, datafile, lastrun, CheckSize = False):
     return Status # DownloadChecks
 
 #*********************************************
-def CheckToDownload(DownloadStationList, lastrun):
+def CheckToDownload(DownloadStationList, lastrun, copy_only):
     """
     Check if remote file is different from local file
 
@@ -358,21 +426,40 @@ def CheckToDownload(DownloadStationList, lastrun):
 
     ToDownload=[False for dsl in range(len(DownloadStationList))]
 
-    for df, dfile in enumerate(DownloadStationList):
+    # if wanting to keep a previous version of the ISD files, then return all as Download = False
+    if copy_only:
+        return ToDownload
 
-        old_file = OLD_ISD_DATA_LOCS + dfile.target_dir + dfile.filen
-        
-        ToDownload[df] = DownloadChecks(old_file, dfile, lastrun)
-        # also check if file recently downloaded to same directory   
-        #   and if this needs overwriting
-        #   allows for scrape to be performed into same directory
-        new_file = ISD_DATA_LOCS + dfile.target_dir + dfile.filen
-        
-        # only check if the file exists there.
-        if os.path.exists(new_file):
-            ToDownload[df] = DownloadChecks(new_file, dfile, lastrun,  CheckSize = False)
+    else:
 
-    return ToDownload # CheckToDownload
+        for df, dfile in enumerate(DownloadStationList):
+
+            old_file = OLD_ISD_DATA_LOCS + dfile.target_dir + dfile.filen
+
+            ToDownload[df] = DownloadChecks(old_file, dfile, lastrun)
+            # also check if file recently downloaded to same directory   
+            #   and if this needs overwriting
+            #   allows for scrape to be performed into same directory
+            new_file = ISD_DATA_LOCS + dfile.target_dir + dfile.filen
+
+            # only check if the file exists there.
+            if os.path.exists(new_file):
+                ToDownload[df] = DownloadChecks(new_file, dfile, lastrun,  CheckSize = False)
+
+        return ToDownload # CheckToDownload
+
+#*********************************************
+def write_last_download(station, year):
+    """
+    (Over)Writes file containing last station download was attempted for a given year
+    """
+
+    outfile=os.path.join(ISD_DATA_LOCS, 'failed_download_{}.txt'.format(year))
+    with open(outfile,'w') as lf:
+        lf.write("{}".format(station))
+
+    return
+    
 
 #*********************************************
 def DownloadStations(DownloadStationList,ToDownload,year, verbose = False):
@@ -387,11 +474,33 @@ def DownloadStations(DownloadStationList,ToDownload,year, verbose = False):
     If downloading not necessary, files are copied from the
     old location to the new location.
 
-    **options allows for verbose setting
+    :param bool verbose: allows for verbose setting
     """
+   
+    # test if file left over from previous download
+    fail_start_index = 0
+    if os.path.exists(os.path.join(ISD_DATA_LOCS, 'failed_download_{}.txt'.format(year))):
+        
+        logfile=os.path.join(ISD_DATA_LOCS, 'failed_download_{}.txt'.format(year))
+        with open(logfile,'r') as lf:
+            for l, line in enumerate(lf):
+                if l == 0:
+                    fail_start_id = line.strip()
+        
+        # find location of station in DownloadStationList  
+        station_id_list = [d.filen for d in DownloadStationList]
+        try:
+            fail_start_index = station_id_list.index(fail_start_id)
+        except ValueError:
+            # not in the list
+            fail_start_index = 0
 
     # download the files
     for df,dfile in enumerate(DownloadStationList):
+
+        # if fail_start_index set, then skip all until that station
+        if df < fail_start_index:
+            continue
 
 
         new_loc=ISD_DATA_LOCS + dfile.target_dir
@@ -410,14 +519,37 @@ def DownloadStations(DownloadStationList,ToDownload,year, verbose = False):
             attempts=0
             while downloaded_size != dfile.size:
 
-                print 'doftp -host '+HOST[6:]+' -cwd /pub/data/noaa/'+str(year)+'/ -get '+dfile.filen+'='+new_loc + dfile.filen
-                subprocess.call(["doftp",'-host', HOST[6:], '-cwd', '/pub/data/noaa/'+str(year)+'/', '-get', dfile.filen+'='+new_loc + dfile.filen])
-                      
+                # write logfile for each downloaded file
+                write_last_download(dfile.filen, year)
+                
+                try:
+                    print 'doftp -host '+HOST[6:]+' -cwd /pub/data/noaa/'+str(year)+'/ -get '+dfile.filen+'='+new_loc + dfile.filen
+                    subprocess.check_call(["doftp",'-host', HOST[6:], '-cwd', '/pub/data/noaa/'+str(year)+'/', '-get', dfile.filen+'='+new_loc + dfile.filen])
+                    
+                # handle the error
+                except subprocess.CalledProcessError:
+                    print subprocess.CalledProcessError.message
+                    print "waiting 10 sec and trying again"
+                    import time
+                    time.sleep(10) # wait 10 seconds and onto next while loop
+
+ 
+                except OSError:
+                    # executable not found
+                    print "Issue with doftp"
+                    raise OSError("doftp not found")
+
                 try:
                     downloaded_size=os.path.getsize(new_loc + dfile.filen)
                 except OSError:
                     # file doesn't exist
                     downloaded_size = 0
+
+                attempts += 1
+
+                if attempts > 10:
+                    print "Cancelling download after 10 attempts as filesizes don't match"
+                    raise Exception("Cancelling download after 10 attempts")
 
             if verbose:
                 print "  Download Complete"
@@ -467,7 +599,21 @@ def DeleteFiles(ToDelete, year, verbose = False):
     return # DeleteFiles
 
 #*********************************************
-def main(STARTYEAR, ENDYEAR, restart_id="", end_id="", GetDirList = False):
+def LastRunDate(infile):
+
+    try:
+        with open(infile,'r') as lf:
+            for line in lf:
+                date = datetime.datetime.strptime(line.split("at")[-1].strip(), '%d-%m-%Y %H:%M') # the last time this code was run prior to planned run
+    except:
+        print "Could not read log file {}".format(infile)
+        date = DATASTART
+
+    return date # LastRunDate
+
+
+#*********************************************
+def main(STARTYEAR, ENDYEAR, restart_id="", end_id="", GetDirList = False, copy_only = False):
     """
     Call all other routines
 
@@ -479,60 +625,21 @@ def main(STARTYEAR, ENDYEAR, restart_id="", end_id="", GetDirList = False):
     if end_id != "":
         print "End ID: {}".format(end_id)
 
-    # When was last download time?
-
-    # extract last download time 
-    #    test both old and new location (in case it's an updating download)
-    try:
-        logfile=OLD_ISD_DATA_LOCS+r'last_download.txt'
-        with open(logfile,'r') as lf:
-            for line in lf:
-                old_lastrun=datetime.datetime.strptime(line.split("at")[-1].strip(), '%d-%m-%Y %H:%M') # the last time this code was run prior to planned run
-    except:
-        print "Could not read log file "+OLD_ISD_DATA_LOCS+r'last_download.txt'
-        sys.exit()   
- 
-    try:
-        logfile=ISD_DATA_LOCS+r'last_download.txt'
-        with open(logfile,'r') as lf:
-            for line in lf:
-                new_lastrun=datetime.datetime.strptime(line.split("at")[-1].strip(), '%d-%m-%Y %H:%M') # the last time this code was run prior to planned run
-    except:
-        print "Could not read log file "+ISD_DATA_LOCS+r'last_download.txt'
-        new_lastrun = old_lastrun
-
-
-    lastrun = max(old_lastrun, new_lastrun)
-
-
-    print "Script last run on {}".format(datetime.datetime.strftime(lastrun, '%d-%b-%Y %H:%M'))
-
     # Allow for check before running and overwriting files
     print "Old Data Location {}".format(OLD_ISD_DATA_LOCS)
     print "New Data Location {}".format(ISD_DATA_LOCS)
 
     print "Downloading or copying data from {} to {}".format(OLD_ISD_DATA_LOCS,ISD_DATA_LOCS)
 
-
-    # output record of when last download occurred
-    try:
-        logfile=ISD_DATA_LOCS+r'last_download.txt'
-        with open(logfile,'w') as lf:
-            lf.write("Last download commenced at %s \n" %  datetime.datetime.now().strftime('%d-%m-%Y %H:%M'))
-    except:
-        print "Could not create log file "+ISD_DATA_LOCS+r'last_download.txt'
-        sys.exit()
-
     # extra diagnostic output
-    IsVerbose=True
-    
+    IsVerbose=True  
 
     # run main programme
     
     # test all required files exist
     for slfile in STATIONLISTFILES:
-        if not os.path.exists(INPUT_FILE_LOCS + slfile):
-            print "Missing file required for run ", INPUT_FILE_LOCS + slfile
+        if not os.path.exists(os.path.join(INPUT_FILE_LOCS, slfile)):
+            print "Missing file required for run {}".format(os.path.join(INPUT_FILE_LOCS, slfile))
             sys.exit("Please amend and re-run script")
         
     # data stored in years
@@ -544,12 +651,25 @@ def main(STARTYEAR, ENDYEAR, restart_id="", end_id="", GetDirList = False):
     
     # get list of folders on server (parent directory to all of the years)
     GetFileListing(HOST, ISD_LOC)
-    folder_list_file = file("input_files/isd_ftp_list_parent.txt", "r")
+    folder_list_file = file("{}/isd_ftp_list_parent.txt".format(INPUT_FILE_LOCS), "r")
     folder_list = folder_list_file.readlines()
     folder_list = ExtractFileData(folder_list, directory = True)
                               
-    for year in range(STARTYEAR,ENDYEAR+1):
+    # do backwards so that get most recent years (i.e. updated ones) first
+    for year in range(ENDYEAR, STARTYEAR-1, -1):
+        YearStartTime = dt.datetime.now()
+        
+        # When was last download time?
+        #    test both old and new location (in case it's an updating download)
+        old_lastrun = LastRunDate(os.path.join(OLD_ISD_DATA_LOCS, 'last_download_{}.txt'.format(year)))
+        new_lastrun = LastRunDate(os.path.join(ISD_DATA_LOCS, 'last_download_{}.txt'.format(year)))
+        
+        lastrun = max(old_lastrun, new_lastrun)
+    
+        print "Script last successfully run on {}".format(datetime.datetime.strftime(lastrun, '%d-%b-%Y %H:%M'))
 
+        print year
+        last_folder_change = min(old_lastrun, new_lastrun)
         for folder in folder_list:
             if folder.filen == str(year):
                 last_folder_change = folder.date
@@ -557,11 +677,12 @@ def main(STARTYEAR, ENDYEAR, restart_id="", end_id="", GetDirList = False):
 
         # have there been any updates to this folder since the last run
         if last_folder_change > lastrun or GetDirList:
+            print "getting FTP list"
             # if so, get list of files on server
             GetFileListing(HOST,ISD_LOC,year = year)
 
         # now read in the list.
-        dir_list_file = file("input_files/isd_ftp_list_{}.txt".format(year), "r")
+        dir_list_file = file("{}/isd_ftp_list_{}.txt".format(INPUT_FILE_LOCS, year), "r")
         dir_list = dir_list_file.readlines()
 
         # get list of files & properties on server using DataFile Class
@@ -573,16 +694,32 @@ def main(STARTYEAR, ENDYEAR, restart_id="", end_id="", GetDirList = False):
 
         FileDeleteList=CheckToDelete(hadisd_stations,isd_files)
 
-        FileFilter=CheckToDownload(FileGetList, lastrun)
+        FileFilter=CheckToDownload(FileGetList, lastrun, copy_only = copy_only)
         print "\n*****Downloading*****\n"
         DownloadStations(FileGetList,FileFilter,year, verbose=IsVerbose)
 
         print "\n*****Deleting*****\n"
         DeleteFiles(FileDeleteList, year, verbose=IsVerbose)
 
+        # output record of when last download occurred - using start time for this year
+        #   in case of interruption or no successful completion, then this isn't overwritten
+        try:
+            logfile=os.path.join(ISD_DATA_LOCS, 'last_download_{}.txt'.format(year))
+            with open(logfile,'w') as lf:
+                lf.write("Last download commenced at %s \n" %  YearStartTime.strftime('%d-%m-%Y %H:%M'))
+        except IOError:
+            print "Could not create log file {}".format(os.path.join(ISD_DATA_LOCS, 'last_download_{}.txt'.format(year)))
+            raise IOError
+
+        # successful download, so remove the log
+        try:
+            os.remove(os.path.join(ISD_DATA_LOCS, 'failed_download_{}.txt'.format(year)))
+        except OSError:
+            # if doesn't exist, then just continue
+            pass
+
         print "\nCompleted year %i\n %s" % (year, datetime.datetime.now().strftime('%d-%m-%Y %H:%M'))
-    # move to next year
-        #raw_input("stop")
+        # move to next year
 
     print "finished"
     print datetime.datetime.now().strftime('%d-%m-%Y %H:%M')
@@ -603,6 +740,8 @@ if __name__ == "__main__":
                         help='End ID for truncated run, default = ""')
     parser.add_argument('--get_dir_list', dest='get_dir_list', action='store_true', default = False,
                         help='update the directory listings, default = False')
+    parser.add_argument('--copy_only', dest='copy_only', action='store_true', default = False,
+                        help='Only copy files from archive, no download, default = False')
 
     args = parser.parse_args()
 
@@ -611,8 +750,9 @@ if __name__ == "__main__":
     restart_id=args.restart_id
     end_id=args.end_id
     get_dir_list=args.get_dir_list
+    copy_only=args.copy_only
 
-    main(STARTYEAR, ENDYEAR, restart_id = restart_id, end_id = end_id, GetDirList = get_dir_list)
+    main(STARTYEAR, ENDYEAR, restart_id = restart_id, end_id = end_id, GetDirList = get_dir_list, copy_only = copy_only)
 
     print "***************************************************"
     print " NOW CHECK THAT THE FILES DOWNLOADED SUCCESSFULLY "

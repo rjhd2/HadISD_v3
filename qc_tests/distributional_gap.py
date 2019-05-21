@@ -9,9 +9,9 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 67                                            $:  Revision of last commit
+#$Rev:: 219                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2015-05-01 16:18:52 +0100 (Fri, 01 May 2015) $:  Date of last commit
+#$Date:: 2019-05-20 16:56:47 +0100 (Mon, 20 May 2019) $:  Date of last commit
 #************************************************************************
 
 import numpy as np
@@ -19,6 +19,7 @@ import scipy as sp
 import datetime as dt
 from scipy.optimize import leastsq
 import scipy.stats as stats
+import copy
 
 # RJHD routines
 import qc_utils as utils
@@ -40,6 +41,8 @@ GAP_SIZE = 2
 
 BIN_SIZE = 0.25
 
+MAD_THRESHOLD = 4.5
+
 #************************************************************************
 def dgc_get_monthly_averages(data, limit, mdi, MEAN = False):
 
@@ -52,6 +55,17 @@ def dgc_get_monthly_averages(data, limit, mdi, MEAN = False):
     else:
         return mdi # dgc_get_monthly_averages
                 
+#************************************************************************
+def dgc_expand_storms(storms, maximum):
+
+    for i in range(6):
+
+        if storms[0]-1 >=0:
+            storms = np.insert(storms, 0, storms[0]-1)
+        if storms[-1]+1 < maximum:
+            storms = np.append(storms, storms[-1]+1)
+
+    return np.unique(storms) # dgc_expand_storms
                 
 #************************************************************************
 def dgc_find_gap(hist, bins, threshold, gap_size = GAP_SIZE):
@@ -160,7 +174,7 @@ def dgc_set_up_plot(plot_gaussian, standardised_months, variable, threshold = (1
     return  # dgc_set_up_plot
 
 #************************************************************************
-def dgc_monthly(station, variable, flags, start, end, plots=False, diagnostics=False, idl = False):
+def dgc_monthly(station, variable, flags, start, end, logfile, plots=False, diagnostics=False, idl = False, doMonth = False):
     '''
     Original Distributional Gap Check
 
@@ -169,6 +183,7 @@ def dgc_monthly(station, variable, flags, start, end, plots=False, diagnostics=F
     :param array flags: flags array
     :param datetime start: data start
     :param datetime end: data end
+    :param file logfile: output logfile
     :param bool plots: run plots
     :param bool diagnostics: run diagnostics
     :param bool idl: run IDL equivalent routines for median
@@ -189,7 +204,8 @@ def dgc_monthly(station, variable, flags, start, end, plots=False, diagnostics=F
     month_average_filtered = np.empty(month_ranges.shape[0])
     month_average_filtered.fill(st_var.mdi)
     
-    all_filtered = utils.apply_filter_flags(st_var)
+    all_filtered = utils.apply_filter_flags(st_var, doMonth = doMonth, start = start, end = end)
+
     for m, month in enumerate(month_ranges):
         
         data = st_var.data[month[0]:month[1]]
@@ -315,29 +331,44 @@ def dgc_monthly(station, variable, flags, start, end, plots=False, diagnostics=F
             plt.legend(loc='lower center',ncol=4, bbox_to_anchor=(0.5,-0.2),frameon=False,prop={'size':13})
             plt.show()
             #plt.savefig(IMAGELOCATION+'/'+station.id+'_DistributionalGap.png')
+
+    nflags, = np.where(flags != 0)
+    utils.print_flagged_obs_number(logfile, "Distributional Gap Month", variable, len(nflags), noWrite=diagnostics)
                    
     return flags # dgc_monthly
 
 #************************************************************************
-def dgc_all_obs(station, variable, flags, start, end, plots = False, diagnostics = False, idl = False, windspeeds = False, GH = False):
+def dgc_all_obs(station, variable, flags, start, end, logfile, plots = False, diagnostics = False, idl = False, windspeeds = False, GH = False, doMonth = False):
     '''RJHD addition working on all observations'''
     
     if plots:
         import matplotlib.pyplot as plt
 
-    st_var = getattr(station, variable)
-    
     month_ranges = utils.month_starts_in_pairs(start, end)
     month_ranges = month_ranges.reshape(-1,12,2)
-    
-    all_filtered = utils.apply_filter_flags(st_var)
 
+    # extract variable
+    st_var = getattr(station, variable)
+    # apply flags (and mask incomplete year if appropriate)
+    all_filtered = utils.apply_filter_flags(st_var, doMonth = doMonth, start = start, end = end)
+    
+    st_var_complete_year = copy.deepcopy(st_var)
+    if doMonth:
+        # restrict the incomplete year if appropriate - keep other flagged obs.
+        full_year_end = utils.get_first_hour_this_year(start, end)
+        st_var_complete_year.data.mask[full_year_end :] = True
  
+
     for month in range(12):
     
+        # if requiring wind data, extract data and find monthly averages
         if windspeeds == True:
             st_var_wind = getattr(station, "windspeeds")
-            
+
+            if doMonth:
+                # restrict the incomplete year if appropriate               
+                st_var_wind.data.mask[full_year_end :] = True
+
             # get monthly averages
             windspeeds_month = np.empty([])
             for y, year in enumerate(month_ranges[:,month,:]):
@@ -350,13 +381,13 @@ def dgc_all_obs(station, variable, flags, start, end, plots = False, diagnostics
             windspeeds_month_average = dgc_get_monthly_averages(windspeeds_month, OBS_LIMIT, st_var_wind.mdi, MEAN)
             windspeeds_month_mad = utils.mean_absolute_deviation(windspeeds_month, median=True)
     
-        
-        this_month_data = np.array([])
-        this_month_filtered = np.array([])
-        
+                
+        # pull data from each calendar month together
         this_month_data, dummy, dummy = utils.concatenate_months(month_ranges[:,month,:], st_var.data, hours = False)
         this_month_filtered, dummy, dummy = utils.concatenate_months(month_ranges[:,month,:], all_filtered, hours = False)
+        this_month_complete, dummy, dummy = utils.concatenate_months(month_ranges[:,month,:], st_var_complete_year.data, hours = False)
                 
+        # if enough clean and complete data for this calendar month find the median and IQR
         if len(this_month_filtered.compressed()) > OBS_LIMIT:
             
             if idl:
@@ -369,23 +400,37 @@ def dgc_all_obs(station, variable, flags, start, end, plots = False, diagnostics
             
             if iqr == 0.0:
                 # to get some spread if IQR too small                   
-                iqr = utils.IQR(this_month_filtered.compressed(), percentile = 0.05)
-                
+                iqr = utils.IQR(this_month_filtered.compressed(), percentile = 0.05)  
                 print "Spurious_stations file not yet sorted"
     
-
+                
+            # if have an IQR, anomalise using median and standardise using IQR
             if iqr != 0.0:               
-                monthly_values = np.ma.array((this_month_data.compressed() - monthly_median) / iqr)
 
-                bins, bincenters = utils.create_bins(monthly_values, BIN_SIZE)
-                dummy, plot_bincenters = utils.create_bins(monthly_values, BIN_SIZE/10.)
-        
-                hist, binEdges = np.histogram(monthly_values, bins = bins)
-                                               
+                monthly_values = np.ma.array((this_month_data.compressed() - monthly_median) / iqr)
+                complete_values = np.ma.array((this_month_complete.compressed() - monthly_median) / iqr)
+
+                # use complete years only for the histogram - aiming to find outliers.
+                bins, bincenters = utils.create_bins(complete_values, BIN_SIZE)
+                dummy, plot_bincenters = utils.create_bins(complete_values, BIN_SIZE/10.)
+                hist, binEdges = np.histogram(complete_values, bins = bins)
+                """
+                Change to monthly updates Oct 2017
+                Thought about changing distribution to use filtered values
+                But this changes the test beyond just dealing with additional months
+                Commented out lines below would be alternative.
+                """
+                # bins, bincenters = utils.create_bins(filtered_values, BIN_SIZE)
+                # dummy, plot_bincenters = utils.create_bins(filtered_values, BIN_SIZE/10.)
+                # hist, binEdges = np.histogram(filtered_values, bins = bins)
+                
+                # used filtered (incl. incomplete year mask) to determine the distribution.                
                 if GH:
                     # Use Gauss-Hermite polynomials to add skew and kurtosis to Gaussian fit - January 2015 ^RJHD
 
-                    initial_values = [np.max(hist), np.mean(monthly_values), np.std(monthly_values), stats.skew(monthly_values), stats.kurtosis(monthly_values)] # norm, mean, std, skew, kurtosis
+                    # Feb 2019 - if large amounts off centre, can affect initial values
+                    # switched to median and MAD
+                    initial_values = [np.max(hist), np.median(complete_values), utils.mean_absolute_deviation(complete_values, median=True), stats.skew(complete_values), stats.kurtosis(complete_values)] # norm, mean, std, skew, kurtosis
                     
                     fit = leastsq(utils.residualsGH, initial_values, [bincenters, hist, np.ones(len(hist))])
                     res = utils.hermite2gauss(fit[0], diagnostics = diagnostics)
@@ -406,9 +451,15 @@ def dgc_all_obs(station, variable, flags, start, end, plots = False, diagnostics
                     l_minimum_threshold = round(plot_bincenters[good_values[0]]) - 1
                     u_minimum_threshold = 1 + round(plot_bincenters[good_values[-1]])
                                       
+                    if diagnostics:
+                        print hist
+                        print res
+                        print iqr, l_minimum_threshold, u_minimum_threshold
 
+
+                # or just a standard Gaussian
                 else:
-                    gaussian = utils.fit_gaussian(bincenters, hist, max(hist), mu = np.mean(monthly_values), sig = np.std(monthly_values))
+                    gaussian = utils.fit_gaussian(bincenters, hist, max(hist), mu = np.median(complete_values), sig = utils.mean_absolute_value(complete_values))
 
                     # assume the same threshold value
                     u_minimum_threshold = 1 + round(utils.invert_gaussian(FREQUENCY_THRESHOLD, gaussian))
@@ -417,81 +468,130 @@ def dgc_all_obs(station, variable, flags, start, end, plots = False, diagnostics
 
                     plot_gaussian = utils.gaussian(plot_bincenters, gaussian)
 
-                if diagnostics:
-                    if GH:
-                        print hist
-                        print res
-                        print iqr, l_minimum_threshold, u_minimum_threshold
-
-                    else:
+                    if diagnostics:
                         print hist
                         print gaussian
                         print iqr, u_minimum_threshold, 1. + utils.invert_gaussian(FREQUENCY_THRESHOLD, gaussian)
 
                 if plots:
-                    dgc_set_up_plot(plot_gaussian, monthly_values, variable, threshold = (u_minimum_threshold, l_minimum_threshold), sub_par = "observations", GH = GH)
+                    dgc_set_up_plot(plot_gaussian, complete_values, variable, threshold = (u_minimum_threshold, l_minimum_threshold), sub_par = "observations", GH = GH)
                      
                     if GH:
                         plt.figtext(0.15, 0.67, 'Mean %.2f, S.d. %.2f,\nSkew %.2f, Kurtosis %.2f' %(res['mean'], res['dispersion'], res['skewness'], res['kurtosis']), color='k', size='small')
 
                     
-
+                # now trying to find gaps in the distribution
                 uppercount = len(np.where(monthly_values > u_minimum_threshold)[0])
                 lowercount = len(np.where(monthly_values < l_minimum_threshold)[0])
                 
                 # this needs refactoring - but lots of variables to pass in
                 if plots or diagnostics: gap_plot_values = np.array([])
 
+                # do one side of distribution and then other
                 if uppercount > 0:
                     gap_start = dgc_find_gap(hist, binEdges, u_minimum_threshold)
                         
                     if gap_start != 0:
                         
+                        # if found a gap, then go through each year for this calendar month
+                        #  and flag observations further from middle
                         for y, year in enumerate(month_ranges[:,month,:]):
                 
-                            this_year_data = np.ma.array(all_filtered[year[0]:year[1]])
+                            # not using filtered - checking all available data
+                            this_year_data = np.ma.array(st_var.data[year[0]:year[1]])
                             this_year_flags = np.array(flags[year[0]:year[1]])
-                            gap_cleaned_locations = np.where(((this_year_data - monthly_median) / iqr) > gap_start)
+                            gap_cleaned_locations = np.ma.where(((this_year_data - monthly_median) / iqr) > gap_start)
 
                             this_year_flags[gap_cleaned_locations] = 1
                             flags[year[0]:year[1]] = this_year_flags
 
-                            if plots or diagnostics: gap_plot_values = np.append(gap_plot_values, (this_year_data[gap_cleaned_locations].compressed() - monthly_median)/iqr)
+                            if plots or diagnostics: 
+                                gap_plot_values = np.append(gap_plot_values, (this_year_data[gap_cleaned_locations].compressed() - monthly_median)/iqr)
 
+                                if len(gap_cleaned_locations[0]) > 0:
+                                    print "Upper {}-{} - {} obs flagged".format(y+start.year, month, len(gap_cleaned_locations[0]))
+                                    print gap_cleaned_locations, this_year_data[gap_cleaned_locations]
 
                 if lowercount > 0:
                     gap_start = dgc_find_gap(hist, binEdges, l_minimum_threshold)
-                        
+
                     if gap_start != 0:
 
+                        # if found a gap, then go through each year for this calendar month
+                        #  and flag observations further from middle
                         for y, year in enumerate(month_ranges[:,month,:]):
                 
-                            this_year_data = np.ma.array(all_filtered[year[0]:year[1]])
+                            this_year_data = np.ma.array(st_var.data[year[0]:year[1]])
                             this_year_flags = np.array(flags[year[0]:year[1]])
-                            gap_cleaned_locations = np.where(np.logical_and(((this_year_data - monthly_median) / iqr) < gap_start, this_year_data.mask != True))
+                            gap_cleaned_locations = np.ma.where(np.logical_and(((this_year_data - monthly_median) / iqr) < gap_start, this_year_data.mask != True))
+                            # add flag requirement for low pressure bit if appropriate
 
                             this_year_flags[gap_cleaned_locations] = 1
                             flags[year[0]:year[1]] = this_year_flags
 
-                            if plots or diagnostics: gap_plot_values = np.append(gap_plot_values, (this_year_data[gap_cleaned_locations].compressed() - monthly_median)/iqr)
-                    
+                            if plots or diagnostics: 
+                                gap_plot_values = np.append(gap_plot_values, (this_year_data[gap_cleaned_locations].compressed() - monthly_median)/iqr)
 
+                                if len(gap_cleaned_locations[0]) > 0:
+                                    print "Lower {}-{} - {} obs flagged".format(y+start.year, month, len(gap_cleaned_locations[0]))
+                                    print gap_cleaned_locations, this_year_data[gap_cleaned_locations]
+
+                            # if doing SLP then do extra checks for storms
                             if windspeeds:
+                                windspeeds_year = np.ma.array(st_var_wind.data[year[0]:year[1]])
+
                                 this_year_flags[gap_cleaned_locations] = 2 # tentative flags
                                 
                                 slp_average = dgc_get_monthly_averages(this_month_data, OBS_LIMIT, st_var.mdi, MEAN)
                                 slp_mad = utils.mean_absolute_deviation(this_month_data, median=True)
-                                storms = np.where((((windspeeds_month - windspeeds_month_average) / windspeeds_month_mad) > 4.5) &\
-                                                   (((this_month_data - slp_average) / slp_mad) > 4.5))
                                 
-                                if len(storms[0]) >= 2:
-                                    
-                                    storm_1diffs = np.diff(storms)
-                                    
-                                    separations = np.where(storm_1diffs != 1)
+                                # need to ensure that this_year_data is less than slp_average, hence order of test
+                                storms, = np.ma.where((((windspeeds_year - windspeeds_month_average) / windspeeds_month_mad) > MAD_THRESHOLD) &\
+                                                   (((slp_average - this_year_data) / slp_mad) > MAD_THRESHOLD))
+                                
+                                # using IDL terminology
+                                if len(storms) >= 2:
+                                    # use the first difference series to find when there are gaps in 
+                                    # contiguous sequences of storm observations - want to split up into
+                                    # separate storm events                                    
+                                    storm_1diffs = np.diff(storms)                                    
+                                    separations, = np.where(storm_1diffs != 1)
 
-                                    #for sep in separations:
+                                    # expand around storm signal so that all low SLP values covered, and unflagged
+                                    if len(separations) >= 1:
+                                        print "  multiple storms in {} {}".format(y+start.year, month)
 
+                                        # if more than one storm signal that month, then use intervals
+                                        #    in the first difference series to expand around the first interval alone
+                                        storm_start = 0
+                                        storm_finish = separations[0] + 1                                           
+                                        first_storm = dgc_expand_storms(storms[storm_start: storm_finish], len(this_year_data))
+                                        final_storms = copy.deepcopy(first_storm)
+
+                                        for j in range(len(separations)):
+                                            # then do the rest in a loop
+                                                
+                                            if j+1 == len(separations):
+                                                # final one
+                                                this_storm = dgc_expand_storms(storms[separations[j]+1: ], len(this_year_data))
+                                            else:
+                                                this_storm = dgc_expand_storms(storms[separations[j]+1: separations[j+1]+1], len(this_year_data))
+                                                
+                                            final_storms = np.append(final_storms, this_storm)
+                                        
+                                    else:
+                                        # else just expand around the signal by 6 hours either way
+                                        final_storms = dgc_expand_storms(storms, len(this_year_data))
+
+                                else:
+                                    final_storms = storms
+
+                                if len(storms) >= 1:
+                                    print "Tropical Storm signal in {} {}".format(y+start.year, month)
+                                    this_year_flags[final_storms] = 0
+
+                            # and write flags back into array
+                            flags[year[0]:year[1]] = this_year_flags
 
                 if plots:
                     hist, binEdges = np.histogram(gap_plot_values, bins = bins)
@@ -502,13 +602,15 @@ def dgc_all_obs(station, variable, flags, start, end, plots = False, diagnostics
                     plt.legend(loc='lower center',ncol=3, bbox_to_anchor=(0.5,-0.2),frameon=False,prop={'size':13})
                     plt.show()
                     #plt.savefig(IMAGELOCATION+'/'+station.id+'_DistributionalGap_'+str(month+1)+'.png')
-    if diagnostics:
-        utils.print_flagged_obs_number("", "Distributional Gap", variable, len(gap_plot_values), noWrite=True)
+
+
+    nflags, = np.where(flags != 0)
+    utils.print_flagged_obs_number(logfile, "Distributional Gap All", variable, len(nflags), noWrite=diagnostics)
 
     return flags # dgc_all_obs
 
 #************************************************************************
-def dgc(station, variable_list, flag_col, start, end, logfile, plots=False, diagnostics = False, idl = False, GH = False):
+def dgc(station, variable_list, flag_col, start, end, logfile, plots=False, diagnostics = False, idl = False, GH = False, doMonth = False):
     '''Controller for two individual tests'''
 
     if plots:
@@ -516,20 +618,21 @@ def dgc(station, variable_list, flag_col, start, end, logfile, plots=False, diag
         
     
     for v, variable in enumerate(variable_list):    
-        station.qc_flags[:,flag_col[v]] = dgc_monthly(station, variable, station.qc_flags[:,flag_col[v]], start, end, plots=plots, diagnostics=diagnostics, idl = idl)
+        station.qc_flags[:,flag_col[v]] = dgc_monthly(station, variable, station.qc_flags[:,flag_col[v]], start, end, logfile, plots=plots, diagnostics=diagnostics, idl = idl)
         
         if variable == "slp":
             # need to send in windspeeds too        
-            station.qc_flags[:,flag_col[v]] = dgc_all_obs(station, variable, station.qc_flags[:,flag_col[v]], start, end, plots=plots, diagnostics=diagnostics, idl = idl, windspeeds = True, GH = GH)
+            station.qc_flags[:,flag_col[v]] = dgc_all_obs(station, variable, station.qc_flags[:,flag_col[v]], start, end, logfile, plots=plots, diagnostics=diagnostics, idl = idl, windspeeds = True, GH = GH, doMonth = doMonth)
+
         else:
-            station.qc_flags[:,flag_col[v]] = dgc_all_obs(station, variable, station.qc_flags[:,flag_col[v]], start, end, plots=plots, diagnostics=diagnostics, idl = idl, GH = GH)
+            station.qc_flags[:,flag_col[v]] = dgc_all_obs(station, variable, station.qc_flags[:,flag_col[v]], start, end, logfile, plots=plots, diagnostics=diagnostics, idl = idl, GH = GH, doMonth = doMonth)
+
     
         flag_locs = np.where(station.qc_flags[:, flag_col[v]] != 0)
 
-        if plots or diagnostics:
-            utils.print_flagged_obs_number(logfile, "Distributional Gap", variable, len(flag_locs[0]), noWrite=True)
-        else:
-            utils.print_flagged_obs_number(logfile, "Distributional Gap", variable, len(flag_locs[0]))
+        
+        utils.print_flagged_obs_number(logfile, "Distributional Gap", variable, len(flag_locs[0]), noWrite=diagnostics)
+
 
         # copy flags into attribute
         st_var = getattr(station, variable)

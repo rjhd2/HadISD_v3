@@ -9,9 +9,9 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 67                                            $:  Revision of last commit
+#$Rev:: 219                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2015-05-01 16:18:52 +0100 (Fri, 01 May 2015) $:  Date of last commit
+#$Date:: 2019-05-20 16:56:47 +0100 (Mon, 20 May 2019) $:  Date of last commit
 #************************************************************************
 
 import numpy as np
@@ -62,7 +62,7 @@ def dcc_make_sine():
 
 
 #************************************************************************
-def dcc(station, variable_list, full_variable_list, flag_col, logfile, plots = False, diagnostics = False):
+def dcc(station, variable_list, full_variable_list, flag_col, start, end, logfile, diagnostics = False, plots = False, doMonth = False):
     '''
     The diurnal cycle check.
     
@@ -86,9 +86,11 @@ def dcc(station, variable_list, full_variable_list, flag_col, logfile, plots = F
  	# is this needed 21/08/2014        
 #        reporting_accuracy = utils.reporting_accuracy(utils.apply_filter_flags(st_var))
         
-        # apply flags - for detection only
-        filtered_data = utils.apply_filter_flags(st_var)
-
+        # apply flags, but discount incomplete year - so that test values against these later.
+        all_data = utils.apply_filter_flags(st_var)
+        all_data = all_data.reshape(-1,24) # working in fulltimes.
+        # apply flags - also apply to final incomplete year so that best values only use complete years
+        filtered_data = utils.apply_filter_flags(st_var, doMonth = doMonth, start = start, end = end)
         filtered_data = filtered_data.reshape(-1,24) # working in fulltimes.
         number_of_days = filtered_data.shape[0]
 
@@ -99,10 +101,32 @@ def dcc(station, variable_list, full_variable_list, flag_col, logfile, plots = F
             plot_data.mask = True
 #            best_estimate_counter = np.zeros(HOURS)
 
-        diurnal_best_fits     = np.zeros(filtered_data.shape[0], dtype = (int))
+        diurnal_filtered_fits = np.zeros(filtered_data.shape[0], dtype = (int))
+        diurnal_filtered_fits.fill(INTMDI)
+        diurnal_best_fits     = np.zeros(st_var.data.shape[0], dtype = (int))
         diurnal_best_fits.fill(INTMDI)
         diurnal_uncertainties = np.zeros(filtered_data.shape[0])
         diurnal_uncertainties.fill(INTMDI)
+
+        for d,day in enumerate(all_data):
+
+            '''enough observations and have large enough diurnal range '''
+            if len(day.compressed()) >= OBS_PER_DAY:
+
+                obs_daily_range = max(day.compressed()) - min(day.compressed())
+                if obs_daily_range >= DAILY_RANGE:
+                    
+                    if dcc_quartile_check(day):
+                        scaled_sine = ((dcc_make_sine() + 1.) / 2. * obs_daily_range) + min(day.compressed())
+                        diffs = np.zeros(HOURS)
+
+                        '''Find differences for each shifted sine --> cost function'''
+                        for h in range(HOURS):
+                            diffs[h] = np.sum(np.abs(day - scaled_sine).compressed())
+                            scaled_sine = np.roll(scaled_sine, 1) # matched to IDL SHIFT()
+                                                                
+                        # and keep this for testing against the average value later
+                        diurnal_best_fits[d] = np.argmin(diffs) 
 
         for d,day in enumerate(filtered_data):
 
@@ -121,7 +145,7 @@ def dcc(station, variable_list, full_variable_list, flag_col, logfile, plots = F
                             diffs[h] = np.sum(np.abs(day - scaled_sine).compressed())
                             scaled_sine = np.roll(scaled_sine, 1) # matched to IDL SHIFT()
                                                                            
-                        diurnal_best_fits[d] = np.argmin(diffs)
+                        diurnal_filtered_fits[d] = np.argmin(diffs)
 
                         # default uncertainty is the average time resolution of the data
                         diurnal_uncertainties[d] = round(float(HOURS) / len(day.compressed()))
@@ -130,7 +154,7 @@ def dcc(station, variable_list, full_variable_list, flag_col, logfile, plots = F
                             critical_value = min(diffs) + ((max(diffs) - min(diffs)) * 0.33)
 
                             # centre so minimum in middle
-                            diffs = np.roll(diffs, 11 - diurnal_best_fits[d])
+                            diffs = np.roll(diffs, 11 - diurnal_filtered_fits[d])
                             
                             uncertainty = 1
                             while uncertainty < 11:
@@ -155,7 +179,7 @@ def dcc(station, variable_list, full_variable_list, flag_col, logfile, plots = F
                             
 
         if plots:
-            plt.plot(np.arange(24),np.roll(dcc_make_sine(), np.argmax(np.bincount(diurnal_best_fits[np.where(diurnal_best_fits != INTMDI)]))),'r-')
+            plt.plot(np.arange(24),np.roll(dcc_make_sine(), np.argmax(np.bincount(diurnal_filtered_fits[np.where(diurnal_filtered_fits != INTMDI)]))),'r-')
             plt.xlim([-1,25])
             plt.ylim([-1.2,1.2])
             plt.show()
@@ -163,16 +187,16 @@ def dcc(station, variable_list, full_variable_list, flag_col, logfile, plots = F
         # dumb copy of IDL
 
         '''For each uncertainty range (1-6h) find median of cycle offset'''
-        best_fits = np.zeros(6)
-        best_fits.fill(-9)
+        filtered_fits = np.zeros(6)
+        filtered_fits.fill(-9)
         for h in range(6):
             locs = np.where(diurnal_uncertainties == h+1)
 
             if len(locs[0]) > 300:
-                # best_fits[h] = int(np.median(diurnal_best_fits[locs])) 
+                # filtered_fits[h] = int(np.median(diurnal_filtered_fits[locs])) 
                 # Numpy median gives average of central two values which may not be integer
                 # 25/11/2014 use IDL style which gives lower value
-                best_fits[h] = utils.idl_median(diurnal_best_fits[locs])
+                filtered_fits[h] = utils.idl_median(diurnal_filtered_fits[locs])
  
         '''Build up range of cycles incl, uncertainty to find where best of best located'''
 
@@ -181,16 +205,16 @@ def dcc(station, variable_list, full_variable_list, flag_col, logfile, plots = F
         diurnal_peak = -9
         number_estimates = 0
         for h in range(6):
-            if best_fits[h] != -9:
+            if filtered_fits[h] != -9:
 
                 '''Store lowest uncertainty best fit as first guess'''
                 if diurnal_peak == -9: 
-                    diurnal_peak = best_fits[h]
+                    diurnal_peak = filtered_fits[h]
                     hours = np.roll(hours,11-int(diurnal_peak))
                     hour_matches[11-(h+1):11+(h+2)] = 1
                     number_estimates += 1
                  
-                centre = np.where(hours == best_fits[h])
+                centre, = np.where(hours == filtered_fits[h])
  
                 if (centre[0] - h + 1) >= 0:
                     if (centre[0] + h + 1 ) <=23:
@@ -225,6 +249,7 @@ def dcc(station, variable_list, full_variable_list, flag_col, logfile, plots = F
             hours = np.arange(24)
             hours = np.roll(hours,11-int(diurnal_peak))
             for d in range(number_of_days):
+                # and now going back to the unfiltered data
                 if diurnal_best_fits[d] != INTMDI:
 
                     '''Checks if global falls inside daily value+/-range
@@ -316,10 +341,8 @@ def dcc(station, variable_list, full_variable_list, flag_col, logfile, plots = F
         station.qc_flags[:, flag_col[v]] = np.array(diurnal_flags).reshape(-1)
 
         flag_locs = np.where(station.qc_flags[:, flag_col[v]] != 0)
-        if plots or diagnostics:
-            utils.print_flagged_obs_number(logfile, "Diurnal Cycle", variable, len(flag_locs[0]), noWrite = True)
-        else:
-            utils.print_flagged_obs_number(logfile, "Diurnal Cycle", variable, len(flag_locs[0]))
+        utils.print_flagged_obs_number(logfile, "Diurnal Cycle", variable, len(flag_locs[0]), noWrite = diagnostics)
+
 
         # copy flags into attribute
         st_var.flags[flag_locs] = 1

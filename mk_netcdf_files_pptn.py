@@ -7,22 +7,42 @@
 #************************************************************************
 
 '''
+mk_netcdf_files_pptn.py invoked by typing::
+
+  python2.7 mk_netcdf_files_pptn.py --start 1931 --endyear 2018 --endmonth 10 --restart_id 000000-99999 --end_id 999999-99999 [--extra] [--doCanada]
+
 Python script to read the ISD ASCII text format and output netcdf files
 
 Runs with no inputs in current version. 
 
-Compared to IDL output using compare.py on 30May2012 and found to match
-except for total_cloud_flags - but on investigation with raw ISD files
-the python extraction is the correct one. RJHD
+Input arguments:
 
-Could change data types to match IDL, but adapting QC so that works with
-floats and doubles as appropriate.RJHD
+--start             First year to include
 
-Logic change to match IDL so that overwrite only acted upon if writing
-real data, rather than missing. RJHD
+--endyear           Last year to include
 
+--endmonth          Last month of last year
+
+--restart_id        First station to process
+
+--end_id            Last station to process
+
+--extra             [False] Include extra variables
+
+--doCanada          [False] Include extra Canadian metadata
 '''
 
+#*************************************
+# Compared to IDL output using compare.py on 30May2012 and found to match
+# except for total_cloud_flags - but on investigation with raw ISD files
+# the python extraction is the correct one. RJHD
+#
+# Could change data types to match IDL, but adapting QC so that works with
+# floats and doubles as appropriate.RJHD
+#
+# Logic change to match IDL so that overwrite only acted upon if writing
+# real data, rather than missing. RJHD
+#*************************************
 
 import numpy as np
 import datetime as dt
@@ -298,6 +318,28 @@ def SortClouds2(cloud_cover,cloud_flags, time, amounts, amounts2, flags, clouds)
     return # SortClouds2                         
 
 #************************************************************************
+def ProcessPrecip(depth, flag, condition, time, line, exists):
+    """
+    Extract the precipitation information - allows neater if clause.
+
+    :param array depth: precipitation depth array
+    :param array flag: precipitation flag array
+    :param array condition: precipitation condition array
+    :param int time: time stamp
+    :param str line: the line to process
+    :param int exists: the index of the entry in the line
+    """
+
+    ExtractionProcess(depth, flag, time, FLTMDI, '9999', line, 
+                      exists+5, 4, doflag=True, flagoffset=1, divisor=10.)
+    # these two pass in empty strings as missing data test
+    dummyflag = 0
+    ExtractionProcess(condition, dummyflag, time, '', '9', line,
+                      exists+9, 1, doflag=False)
+
+    return # ProcessPrecip                         
+
+#************************************************************************
 def WriteAttributes(variable,long_name,cell_methods,missing_value,units,axis,vmin,vmax,coordinates,standard_name = ''):
     """
     Write given attributes into ncdf variable
@@ -386,10 +428,14 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
     """
     Parse the ASCII files and do the NetCDF file creation
 
+    :param int STARTYEAR: first year of data
+    :param int ENDYEAR: last year of data (inclusive)
+    :param int ENDMONTH: last month of data (inclusive)
     :param string restart_id: string for starting station, default=""
     :param string end_id: string for ending station, default=""
     :param boolean do_zip: make netCDF4 files with internal zipping
     :param boolean Extra: setting to extract extra variables
+    :param boolean doCanada: use extra information from ECCC
     """
 
     print "Note to Self on re-write (26/2/2018)"
@@ -488,12 +534,37 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
         past_sigwx1=np.zeros(HoursBetween, dtype=np.int)
         past_sigwx1_period=np.zeros(HoursBetween, dtype=np.int)
         past_sigwx1_flag=np.zeros(HoursBetween, dtype=np.int)
-        precip1_period=np.zeros(HoursBetween, dtype=np.int)
         precip1_depth=np.zeros(HoursBetween)
         precip1_condition=['null' for i in range(HoursBetween)]
         precip1_flag=np.zeros(HoursBetween, dtype=np.int)
+        precip2_depth=np.zeros(HoursBetween)
+        precip2_condition=['null' for i in range(HoursBetween)]
+        precip2_flag=np.zeros(HoursBetween, dtype=np.int)
+        precip3_depth=np.zeros(HoursBetween)
+        precip3_condition=['null' for i in range(HoursBetween)]
+        precip3_flag=np.zeros(HoursBetween, dtype=np.int)
+        precip6_depth=np.zeros(HoursBetween)
+        precip6_condition=['null' for i in range(HoursBetween)]
+        precip6_flag=np.zeros(HoursBetween, dtype=np.int)
+        precip9_depth=np.zeros(HoursBetween)
+        precip9_condition=['null' for i in range(HoursBetween)]
+        precip9_flag=np.zeros(HoursBetween, dtype=np.int)
+        precip12_depth=np.zeros(HoursBetween)
+        precip12_condition=['null' for i in range(HoursBetween)]
+        precip12_flag=np.zeros(HoursBetween, dtype=np.int)
+        precip15_depth=np.zeros(HoursBetween)
+        precip15_condition=['null' for i in range(HoursBetween)]
+        precip15_flag=np.zeros(HoursBetween, dtype=np.int)
+        precip18_depth=np.zeros(HoursBetween)
+        precip18_condition=['null' for i in range(HoursBetween)]
+        precip18_flag=np.zeros(HoursBetween, dtype=np.int)
+        precip24_depth=np.zeros(HoursBetween)
+        precip24_condition=['null' for i in range(HoursBetween)]
+        precip24_flag=np.zeros(HoursBetween, dtype=np.int)
         slp=np.zeros(HoursBetween)
         slp_flag=np.zeros(HoursBetween, dtype=np.int)
+        stnlp=np.zeros(HoursBetween)
+        stnlp_flag=np.zeros(HoursBetween, dtype=np.int)
         sun_duration=np.zeros(HoursBetween)
         sun_durationqc=np.zeros(HoursBetween, dtype=np.int)
         wind_gust_period=np.zeros(HoursBetween)
@@ -526,11 +597,28 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
         past_sigwx1.fill(INTMDI)
         past_sigwx1_period.fill(INTMDI)
         past_sigwx1_flag.fill(INTMDI)
-        precip1_period.fill(INTMDI)
         precip1_depth.fill(FLTMDI)
         precip1_flag.fill(INTMDI)
+        precip2_depth.fill(FLTMDI)
+        precip2_flag.fill(INTMDI)
+        precip3_depth.fill(FLTMDI)
+        precip3_flag.fill(INTMDI)
+        precip6_depth.fill(FLTMDI)
+        precip6_flag.fill(INTMDI)
+        precip9_depth.fill(FLTMDI)
+        precip9_flag.fill(INTMDI)
+        precip12_depth.fill(FLTMDI)
+        precip12_flag.fill(INTMDI)
+        precip15_depth.fill(FLTMDI)
+        precip15_flag.fill(INTMDI)
+        precip18_depth.fill(FLTMDI)
+        precip18_flag.fill(INTMDI)
+        precip24_depth.fill(FLTMDI)
+        precip24_flag.fill(INTMDI)
         slp.fill(FLTMDI)
         slp_flag.fill(INTMDI)
+        stnlp.fill(FLTMDI)
+        stnlp_flag.fill(INTMDI)
         sun_duration.fill(INTMDI)
         sun_durationqc.fill(INTMDI)
         wind_gust_period.fill(FLTMDI)
@@ -544,18 +632,6 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
             past_sigwx2=np.zeros(HoursBetween, dtype=np.int)
             past_sigwx2_period=np.zeros(HoursBetween, dtype=np.int)
             past_sigwx2_flag=np.zeros(HoursBetween, dtype=np.int)
-            precip2_period=np.zeros(HoursBetween, dtype=np.int)
-            precip2_depth=np.zeros(HoursBetween)
-            precip2_condition=['null' for i in range(HoursBetween)]
-            precip2_flag=np.zeros(HoursBetween, dtype=np.int)
-            precip3_period=np.zeros(HoursBetween, dtype=np.int)
-            precip3_depth=np.zeros(HoursBetween)
-            precip3_condition=['null' for i in range(HoursBetween)]
-            precip3_flag=np.zeros(HoursBetween, dtype=np.int)
-            precip4_period=np.zeros(HoursBetween, dtype=np.int)
-            precip4_depth=np.zeros(HoursBetween)
-            precip4_condition=['null' for i in range(HoursBetween)]
-            precip4_flag=np.zeros(HoursBetween, dtype=np.int)
             maximum_temp_period=np.zeros(HoursBetween)
             maximum_temp_value=np.zeros(HoursBetween)
             maximum_temp_flags=np.zeros(HoursBetween, dtype=np.int)
@@ -568,24 +644,12 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
             past_sigwx2.fill(INTMDI)
             past_sigwx2_period.fill(INTMDI)
             past_sigwx2_flag.fill(INTMDI)
-            precip2_period.fill(INTMDI)
-            precip2_depth.fill(FLTMDI)
-            precip2_flag.fill(INTMDI)
-            precip3_period.fill(INTMDI)
-            precip3_depth.fill(FLTMDI)
-            precip3_flag.fill(INTMDI)
-            precip4_period.fill(INTMDI)
-            precip4_depth.fill(FLTMDI)
-            precip4_flag.fill(INTMDI)  
             maximum_temp_period.fill(FLTMDI)
             maximum_temp_value.fill(FLTMDI)
             maximum_temp_flags.fill(INTMDI)
             minimum_temp_period.fill(FLTMDI)
             minimum_temp_value.fill(FLTMDI)
             minimum_temp_flags.fill(INTMDI)
-
-
-
 
         # extract stations to process, including composites.
         is_composite=next((i for i, sublist in enumerate(Composites) if station in sublist), -1)
@@ -827,8 +891,28 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
 
                                 # Optional Variables - need to hunt for start point
 
+                                # Station Level Pressure
+                                text_ident='MA1' # 3,5,1,5,1
+                                exists=cleanline.find(text_ident)
+                                if exists!=-1:
+                                    try:
+                                        if RepresentsInt(cleanline[exists+3]):
+
+                                            if Extract:
+                                                ExtractionProcess(stnlp, stnlp_flag,time_loc,FLTMDI,'99999',cleanline,
+                                                                  exists+9, 5, divisor = 10.)
+                                                
+                                    except IndexError:
+                                        # string following data marker doesn't exist
+                                        if dubious_flagged==0:
+                                            dubious_flagged=WriteDubious(dubiousfile,rfile,text_ident, station, string_obs_time)
+                                        
+
+                                elif dubious_flagged==0:
+                                    dubious_flagged=WriteDubious(dubiousfile,rfile,text_ident, station, string_obs_time)
+
                                 # CLOUDs
-                                text_ident='GF1'
+                                text_ident='GF1' # 3,2,2,1,2,1,2,1,5,1,2,1,2,1
                                 exists=cleanline.find(text_ident)
                                 if exists!=-1:
                                     try:
@@ -850,7 +934,7 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
                                 elif dubious_flagged==0:
                                     dubious_flagged=WriteDubious(dubiousfile,rfile,text_ident, station, string_obs_time)
 
-                                text_ident='GA1'
+                                text_ident='GA1' # 3,2,1,6,1,2,1
                                 exists_overall=cleanline.find(text_ident)
 
                                 if exists_overall!=-1:
@@ -898,7 +982,7 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
                                     SortClouds(high_cloud_cover, high_cloud_flags, time_loc, cloud_amts, cloud_flags, hiclouds)                    
 
 
-                                text_ident='GD1'
+                                text_ident='GD1' # 3,1,2,1,6,1,1
                                 exists_overall=cleanline.find(text_ident)
 
                                 if exists_overall!=-1:
@@ -964,7 +1048,7 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
 
 
                                 # PAST-SIGWX
-                                text_ident='AY1'
+                                text_ident='AY1' # 3,1,1,2,1
                                 exists=cleanline.find(text_ident)
 
                                 if exists!=-1:
@@ -985,7 +1069,7 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
                                 elif dubious_flagged==0:
                                     dubious_flagged=WriteDubious(dubiousfile,rfile,text_ident, station, string_obs_time)
 
-                                text_ident='AZ1'
+                                text_ident='AZ1' # 3,1,1,2,1
                                 exists=cleanline.find(text_ident)
 
                                 if exists!=-1:
@@ -1006,42 +1090,50 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
                                 elif dubious_flagged==0:
                                     dubious_flagged=WriteDubious(dubiousfile,rfile,text_ident, station, string_obs_time)
 
-                                # PRECIP
+                                # PRECIP - split into different accumulation periods; run all four entries
+                                for text_ident in ["AA1", "AA2", "AA3", "AA4"]: # 3,2,4,1,1
+                                    exists=cleanline.find(text_ident)
 
-                                text_ident='AA1'
-                                exists=cleanline.find(text_ident)
+                                    if exists!=-1:
+                                        try:
+                                            if RepresentsInt(cleanline[exists+3]):
+                                                if Extract:
+                                                    period = np.zeros(1) # need an array to use this routine
+                                                    ExtractionProcess(period, dummyflag, 0, INTMDI, '99', cleanline,
+                                                                      exists+3, 2, doflag = False)
+                                                    # test if the accumulation period exists.
+                                                    if period[0] == 1:
+                                                        ProcessPrecip(precip1_depth, precip1_flag, precip1_condition, time_loc, cleanline, exists)
+                                                    elif period[0] == 2:
+                                                        ProcessPrecip(precip2_depth, precip2_flag, precip2_condition, time_loc, cleanline, exists)
+                                                    elif period[0] == 3:
+                                                        ProcessPrecip(precip3_depth, precip3_flag, precip3_condition, time_loc, cleanline, exists)
+                                                    elif period[0] == 6:
+                                                        ProcessPrecip(precip6_depth, precip6_flag, precip6_condition, time_loc, cleanline, exists)
+                                                    elif period[0] == 9:
+                                                        ProcessPrecip(precip9_depth, precip9_flag, precip9_condition, time_loc, cleanline, exists)
+                                                    elif period[0] == 12:
+                                                        ProcessPrecip(precip12_depth, precip12_flag, precip12_condition, time_loc, cleanline, exists)
+                                                    elif period[0] == 15:
+                                                        ProcessPrecip(precip15_depth, precip15_flag, precip15_condition, time_loc, cleanline, exists)
+                                                    elif period[0] == 18:
+                                                        ProcessPrecip(precip18_depth, precip18_flag, precip18_condition, time_loc, cleanline, exists)
+                                                    elif period[0] == 24:
+                                                        ProcessPrecip(precip24_depth, precip24_flag, precip24_condition, time_loc, cleanline, exists)
 
-                                if exists!=-1:
-                                    try:
-                                        if RepresentsInt(cleanline[exists+3]):
-                                            if Extract:
 
-                                                ExtractionProcess(precip1_period, dummyflag,time_loc,INTMDI,'99',cleanline,
-                                                                  exists+3,2,doflag=False)
-
-                                                if precip1_period[time_loc] < 0:
-                                                    precip1_period[time_loc]=INTMDI
-
-                                                ExtractionProcess(precip1_depth, precip1_flag,time_loc,FLTMDI,'9999',cleanline,
-                                                                  exists+5,4,doflag=True,flagoffset=1,divisor=10.)
+                                        except IndexError:
+                                            if dubious_flagged==0:
+                                                dubious_flagged=WriteDubious(dubiousfile,rfile,text_ident, station, string_obs_time)
 
 
-                                                # these two pass in empty strings as missing data test
-                                                ExtractionProcess(precip1_condition, dummyflag,time_loc,'','9',cleanline,
-                                                                  exists+9,1,doflag=False)
-
-                                    except IndexError:
-                                        if dubious_flagged==0:
-                                            dubious_flagged=WriteDubious(dubiousfile,rfile,text_ident, station, string_obs_time)
-
-
-                                elif dubious_flagged==0:
-                                    dubious_flagged=WriteDubious(dubiousfile,rfile,text_ident, station, string_obs_time)
+                                    elif dubious_flagged==0:
+                                        dubious_flagged=WriteDubious(dubiousfile,rfile,text_ident, station, string_obs_time)
 
 
                                 # SUN DURATION
 
-                                text_ident='GJ1'
+                                text_ident='GJ1' # 3,4,1
                                 exists=cleanline.find(text_ident)
 
                                 if exists!=-1:
@@ -1062,7 +1154,7 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
 
                                 # WIND GUST
 
-                                for text_ident in ['OA1','OA2','OA3','OA4']:
+                                for text_ident in ['OA1','OA2','OA3','OA4']: # 3,1,2,4,1
                                     # test all of the possible locations for wind gust
                                     exists=cleanline.find(text_ident)
 
@@ -1092,7 +1184,7 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
 
                                 if Extra:
                                     # PRESENT SIGWX
-                                    text_ident='AW1'
+                                    text_ident='AW1'  # 3,2,1
                                     exists=cleanline.find(text_ident)
 
                                     if exists!=-1:
@@ -1112,7 +1204,7 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
 
                                     # PAST-SIGWX2
 
-                                    for text_ident in ['AY1','AY2','AZ1','AZ2']:
+                                    for text_ident in ['AY1','AY2','AZ1','AZ2']: # 3,1,1,2,1
 
                                         exists=cleanline.find(text_ident)
 
@@ -1140,117 +1232,11 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
                                             dubious_flagged=WriteDubious(dubiousfile,rfile,text_ident, station, string_obs_time)
 
 
-                                    # PRECIP
-
-                                    text_ident='AA2'
-                                    exists=cleanline.find(text_ident)
-
-                                    if exists!=-1:
-                                        try:
-                                            if RepresentsInt(cleanline[exists+3]):
-                                                if Extract:
-
-                                                    ExtractionProcess(precip2_period,dummyflag,time_loc,INTMDI,'99',cleanline,
-                                                                      exists+3,2,doflag=False)
-
-                                                    if precip2_period[time_loc] < 0:
-                                                        precip2_period[time_loc]=INTMDI
-
-                                                    ExtractionProcess(precip2_depth,precip2_flag,time_loc,FLTMDI,'9999',cleanline,
-                                                                      exists+5,4,doflag=True,flagoffset=1,divisor=10.)
-
-                                                    ExtractionProcess(precip2_condition, dummyflag,time_loc,'','9',cleanline,
-                                                                      exists+9,1,doflag=False)
-
-                                                    # # leave this as is because of separate value and flag tests
-                                                    # value,flag=ExtractValues('', cleanline,exists+9,1,'9')
-                                                    # if value!='':
-                                                    #     precip2_condition[time_loc]=value
-                                                    # if flag in range(20):
-                                                    #     precip2_flag[time_loc]=flag
-
-                                        except IndexError:
-                                            if dubious_flagged==0:
-                                                dubious_flagged=WriteDubious(dubiousfile,rfile,text_ident, station, string_obs_time)
-
-                                    elif dubious_flagged==0:
-                                        dubious_flagged=WriteDubious(dubiousfile,rfile,text_ident, station, string_obs_time)
-
-                                    text_ident='AA3'
-                                    exists=cleanline.find(text_ident)
-
-                                    if exists!=-1:
-                                        try:
-                                            if RepresentsInt(cleanline[exists+3]):
-                                                if Extract:
-
-                                                    ExtractionProcess(precip3_period,dummyflag,time_loc,INTMDI,'99',cleanline,
-                                                                      exists+3,2,doflag=False)
-
-                                                    if precip3_period[time_loc] < 0:
-                                                        precip3_period[time_loc]=INTMDI
-
-                                                    ExtractionProcess(precip3_depth,precip3_flag,time_loc,FLTMDI,'9999',cleanline,
-                                                                      exists+5,4,doflag=True,flagoffset=1,divisor=10.)
-
-                                                    ExtractionProcess(precip3_condition, dummyflag,time_loc,'','9',cleanline,
-                                                                      exists+9,1,doflag=False)
-
-                                                    # # leave this as is because of separate value and flag tests
-                                                    # value,flag=ExtractValues('', cleanline,exists+9,1,'9')
-                                                    # if value!='':
-                                                    #     precip3_condition[time_loc]=value
-                                                    # if flag in range(20):
-                                                    #     precip3_flag[time_loc]=flag
-
-                                        except IndexError:
-                                            if dubious_flagged==0:
-                                                dubious_flagged=WriteDubious(dubiousfile,rfile,text_ident, station, string_obs_time)
-
-
-                                    elif dubious_flagged==0:
-                                        dubious_flagged=WriteDubious(dubiousfile,rfile,text_ident, station, string_obs_time)
-
-                                    text_ident='AA4'
-                                    exists=cleanline.find(text_ident)
-
-                                    if exists!=-1:
-                                        try:
-                                            if RepresentsInt(cleanline[exists+3]):
-                                                if Extract:
-
-                                                    ExtractionProcess(precip4_period,dummyflag,time_loc,INTMDI,'99',cleanline,
-                                                                      exists+3,2,doflag=False)
-
-                                                    if precip4_period[time_loc] < 0:
-                                                        precip4_period[time_loc]=INTMDI
-
-                                                    ExtractionProcess(precip4_depth,precip4_flag,time_loc,FLTMDI,'9999',cleanline,
-                                                                      exists+5,4,doflag=True,flagoffset=1,divisor=10.)
-
-                                                    ExtractionProcess(precip4_condition, dummyflag,time_loc,'','9',cleanline,
-                                                                      exists+9,1,doflag=False)
-
-                                                    # # leave this as is because of separate value and flag tests
-                                                    # value,flag=ExtractValues('', cleanline,exists+9,1,'9')
-                                                    # if value!='':
-                                                    #     precip4_condition[time_loc]=value
-                                                    # if flag in range(20):
-                                                    #     precip4_flag[time_loc]=flag
-
-                                        except IndexError:
-                                            if dubious_flagged==0:
-                                                dubious_flagged=WriteDubious(dubiousfile,rfile,text_ident, station, string_obs_time)
-
-
-                                    elif dubious_flagged==0:
-                                        dubious_flagged=WriteDubious(dubiousfile,rfile,text_ident, station, string_obs_time)
-
                                     # EXTREME TEMPERATURES
 
                                     # RJHD - 11 March 2014 - these could be converted to Tmax and Tmin using the code information
 
-                                    for text_ident in ['KA1','KA2']:
+                                    for text_ident in ['KA1','KA2']:  #3,3,1,5,1
                                         exists=cleanline.find(text_ident)
 
                                         if exists!=-1:
@@ -1295,6 +1281,7 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
                                 # end Extra variables    
                             # end if time_loc != HoursBetween
                         # end line in file loop
+                            
 
                 except IOError:
                      print "Cannot find file: ", rfile
@@ -1335,12 +1322,37 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
         past_sigwx1=past_sigwx1[mask_vals]
         past_sigwx1_period=past_sigwx1_period[mask_vals]
         past_sigwx1_flag=past_sigwx1_flag[mask_vals]
-        precip1_period=precip1_period[mask_vals]
         precip1_depth=precip1_depth[mask_vals]
         precip1_condition=np.array(precip1_condition)[mask_vals]
         precip1_flag=precip1_flag[mask_vals]
+        precip2_depth=precip2_depth[mask_vals]
+        precip2_condition=np.array(precip2_condition)[mask_vals]
+        precip2_flag=precip2_flag[mask_vals]
+        precip3_depth=precip3_depth[mask_vals]
+        precip3_condition=np.array(precip3_condition)[mask_vals]
+        precip3_flag=precip3_flag[mask_vals]
+        precip6_depth=precip6_depth[mask_vals]
+        precip6_condition=np.array(precip6_condition)[mask_vals]
+        precip6_flag=precip6_flag[mask_vals]
+        precip9_depth=precip9_depth[mask_vals]
+        precip9_condition=np.array(precip9_condition)[mask_vals]
+        precip9_flag=precip9_flag[mask_vals]
+        precip12_depth=precip12_depth[mask_vals]
+        precip12_condition=np.array(precip12_condition)[mask_vals]
+        precip12_flag=precip12_flag[mask_vals]
+        precip15_depth=precip15_depth[mask_vals]
+        precip15_condition=np.array(precip15_condition)[mask_vals]
+        precip15_flag=precip15_flag[mask_vals]
+        precip18_depth=precip18_depth[mask_vals]
+        precip18_condition=np.array(precip18_condition)[mask_vals]
+        precip18_flag=precip18_flag[mask_vals]
+        precip24_depth=precip24_depth[mask_vals]
+        precip24_condition=np.array(precip24_condition)[mask_vals]
+        precip24_flag=precip24_flag[mask_vals]
         slp=slp[mask_vals]
         slp_flag=slp_flag[mask_vals]
+        stnlp=stnlp[mask_vals]
+        stnlp_flag=stnlp_flag[mask_vals]
         sun_duration=sun_duration[mask_vals]
         sun_durationqc=sun_durationqc[mask_vals]
         wind_gust_period=wind_gust_period[mask_vals]
@@ -1354,18 +1366,6 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
             past_sigwx2=past_sigwx2[mask_vals]
             past_sigwx2_period=past_sigwx2_period[mask_vals]
             past_sigwx2_flag=past_sigwx2_flag[mask_vals]
-            precip2_period=precip2_period[mask_vals]
-            precip2_depth=precip2_depth[mask_vals]
-            precip2_condition=np.array(precip2_condition)[mask_vals]
-            precip2_flag=precip2_flag[mask_vals]
-            precip3_period=precip3_period[mask_vals]
-            precip3_depth=precip3_depth[mask_vals]
-            precip3_condition=np.array(precip3_condition)[mask_vals]
-            precip3_flag=precip3_flag[mask_vals]
-            precip4_period=precip4_period[mask_vals]
-            precip4_depth=precip4_depth[mask_vals]
-            precip4_condition=np.array(precip4_condition)[mask_vals]
-            precip4_flag=precip4_flag[mask_vals]
             maximum_temp_period=maximum_temp_period[mask_vals]
             maximum_temp_value=maximum_temp_value[mask_vals]
             maximum_temp_flags=maximum_temp_flags[mask_vals]
@@ -1425,12 +1425,37 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
         pswx1var=netcdf_outfile.createVariable('past_sigwx1','i4',('time',), zlib = do_zip)
         pswx1pvar=netcdf_outfile.createVariable('past_sigwx1_period','i4',('time',), zlib = do_zip)
         pswx1fvar=netcdf_outfile.createVariable('past_sigwx1_flag','i4',('time',), zlib = do_zip)
-        ppt1pvar=netcdf_outfile.createVariable('precip1_period','i8',('time',), zlib = do_zip)
         ppt1dvar=netcdf_outfile.createVariable('precip1_depth','f8',('time',), zlib = do_zip)
         ppt1cvar=netcdf_outfile.createVariable('precip1_condition','S1',('time','character_length',), zlib = do_zip)
         ppt1fvar=netcdf_outfile.createVariable('precip1_flag','i4',('time',), zlib = do_zip)
+        ppt2dvar=netcdf_outfile.createVariable('precip2_depth','f8',('time',), zlib = do_zip)
+        ppt2cvar=netcdf_outfile.createVariable('precip2_condition','S1',('time','character_length',), zlib = do_zip)
+        ppt2fvar=netcdf_outfile.createVariable('precip2_flag','i4',('time',), zlib = do_zip)
+        ppt3dvar=netcdf_outfile.createVariable('precip3_depth','f8',('time',), zlib = do_zip)
+        ppt3cvar=netcdf_outfile.createVariable('precip3_condition','S1',('time','character_length',), zlib = do_zip)
+        ppt3fvar=netcdf_outfile.createVariable('precip3_flag','i4',('time',), zlib = do_zip)
+        ppt6dvar=netcdf_outfile.createVariable('precip6_depth','f8',('time',), zlib = do_zip)
+        ppt6cvar=netcdf_outfile.createVariable('precip6_condition','S1',('time','character_length',), zlib = do_zip)
+        ppt6fvar=netcdf_outfile.createVariable('precip6_flag','i4',('time',), zlib = do_zip)
+        ppt9dvar=netcdf_outfile.createVariable('precip9_depth','f8',('time',), zlib = do_zip)
+        ppt9cvar=netcdf_outfile.createVariable('precip9_condition','S1',('time','character_length',), zlib = do_zip)
+        ppt9fvar=netcdf_outfile.createVariable('precip9_flag','i4',('time',), zlib = do_zip)
+        ppt12dvar=netcdf_outfile.createVariable('precip12_depth','f8',('time',), zlib = do_zip)
+        ppt12cvar=netcdf_outfile.createVariable('precip12_condition','S1',('time','character_length',), zlib = do_zip)
+        ppt12fvar=netcdf_outfile.createVariable('precip12_flag','i4',('time',), zlib = do_zip)
+        ppt15dvar=netcdf_outfile.createVariable('precip15_depth','f8',('time',), zlib = do_zip)
+        ppt15cvar=netcdf_outfile.createVariable('precip15_condition','S1',('time','character_length',), zlib = do_zip)
+        ppt15fvar=netcdf_outfile.createVariable('precip15_flag','i4',('time',), zlib = do_zip)
+        ppt18dvar=netcdf_outfile.createVariable('precip18_depth','f8',('time',), zlib = do_zip)
+        ppt18cvar=netcdf_outfile.createVariable('precip18_condition','S1',('time','character_length',), zlib = do_zip)
+        ppt18fvar=netcdf_outfile.createVariable('precip18_flag','i4',('time',), zlib = do_zip)
+        ppt24dvar=netcdf_outfile.createVariable('precip24_depth','f8',('time',), zlib = do_zip)
+        ppt24cvar=netcdf_outfile.createVariable('precip24_condition','S1',('time','character_length',), zlib = do_zip)
+        ppt24fvar=netcdf_outfile.createVariable('precip24_flag','i4',('time',), zlib = do_zip)
         slpvar=netcdf_outfile.createVariable('slp','f8',('time',), zlib = do_zip)
         slpfvar=netcdf_outfile.createVariable('slp_flag','i4',('time',), zlib = do_zip)
+        stnlpvar=netcdf_outfile.createVariable('stnlp','f8',('time',), zlib = do_zip)
+        stnlpfvar=netcdf_outfile.createVariable('stnlp_flag','i4',('time',), zlib = do_zip)
         sdvar=netcdf_outfile.createVariable('sun_duration','f8',('time',), zlib = do_zip)
         sdfvar=netcdf_outfile.createVariable('sun_durationqc','i4',('time',), zlib = do_zip)
         wgstpvar=netcdf_outfile.createVariable('wind_gust_period','f8',('time',), zlib = do_zip)
@@ -1444,18 +1469,6 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
             wtvar=netcdf_outfile.createVariable('windtypes','S1',('time','character_length'), zlib = do_zip)
             swxvar=netcdf_outfile.createVariable('present_sigwx','i4',('time',), zlib = do_zip)
             swxfvar=netcdf_outfile.createVariable('present_sigwx_flags','i4',('time',), zlib = do_zip)
-            ppt2pvar=netcdf_outfile.createVariable('precip2_period','i8',('time',), zlib = do_zip)
-            ppt2dvar=netcdf_outfile.createVariable('precip2_depth','f8',('time',), zlib = do_zip)
-            ppt2cvar=netcdf_outfile.createVariable('precip2_condition','S1',('time','character_length',), zlib = do_zip)
-            ppt2fvar=netcdf_outfile.createVariable('precip2_flag','i4',('time',), zlib = do_zip)
-            ppt3pvar=netcdf_outfile.createVariable('precip3_period','i8',('time',), zlib = do_zip)
-            ppt3dvar=netcdf_outfile.createVariable('precip3_depth','f8',('time',), zlib = do_zip)
-            ppt3cvar=netcdf_outfile.createVariable('precip3_condition','S1',('time','character_length',), zlib = do_zip)
-            ppt3fvar=netcdf_outfile.createVariable('precip3_flag','i4',('time',), zlib = do_zip)
-            ppt4pvar=netcdf_outfile.createVariable('precip4_period','i8',('time',), zlib = do_zip)
-            ppt4dvar=netcdf_outfile.createVariable('precip4_depth','f8',('time',), zlib = do_zip)
-            ppt4cvar=netcdf_outfile.createVariable('precip4_condition','S1',('time','character_length',), zlib = do_zip)
-            ppt4fvar=netcdf_outfile.createVariable('precip4_flag','i4',('time',), zlib = do_zip)
             maxtpvar=netcdf_outfile.createVariable('maximum_temp_period','f8',('time',), zlib = do_zip)
             maxtvvar=netcdf_outfile.createVariable('maximum_temp_value','f8',('time',), zlib = do_zip)
             maxtfvar=netcdf_outfile.createVariable('maximum_temp_flag','i4',('time',), zlib = do_zip)
@@ -1553,10 +1566,41 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
         WriteFlagAttributes(pswx1fvar,'ISD flags for reported past significant weather - see ISD documentation',INTMDI,'T')
         WriteAttributes(pswx1pvar,'Reported period over which significant weather report was recorded','latitude: longitude: point (interval: 1 day)', INTMDI, 'Hours', 'T', 0, 24,'latitude longitude elevation')
 
-        WriteAttributes(ppt1pvar,'Reported period over which precipitation was recorded (first ISD field - n.b. not necessarily hourly)','latitude: longitude: point', long(INTMDI), 'hour', 'T', 0, 98,'latitude longitude elevation precip1_depth') #, standard_name = 'period_of_precipitation_report')
-        WriteAttributes(ppt1dvar,'Depth of Precipitation Reported over time period stated in precip1_period (first ISD field - n.b. not necessarily hourly accumulation)','latitude: longitude: time: sum ', FLTMDI, 'mm', 'T', 0, 999.8,'latitude longitude elevation precip1_period', standard_name = 'lwe_thickness_of_precipitation_amount')
-        WriteFlagAttributes(ppt1cvar,'Precipitation Code (denotes if trace amount)', 'null','T')
-        WriteFlagAttributes(ppt1fvar,'ISD flags for first precip field - see ISD documentation', INTMDI,'T')
+        WriteAttributes(ppt1dvar,'Depth of Precipitation Reported in 1 hour (from all four ISD fields)','latitude: longitude: time: sum ', FLTMDI, 'mm', 'T', 0, 999.8,'latitude longitude elevation', standard_name = 'lwe_thickness_of_precipitation_amount')
+        WriteFlagAttributes(ppt1cvar,'Precipitation Code for 1 hour accumulation (denotes if trace amount)', 'null','T')
+        WriteFlagAttributes(ppt1fvar,'ISD flags for 1 hour precipitation accumulation (from all four ISD fields - see ISD documentation)', INTMDI,'T')
+
+        WriteAttributes(ppt2dvar,'Depth of Precipitation Reported in 2 hour (from all four ISD fields)','latitude: longitude: time: sum ', FLTMDI, 'mm', 'T', 0, 999.8,'latitude longitude elevation', standard_name = 'lwe_thickness_of_precipitation_amount')
+        WriteFlagAttributes(ppt2cvar,'Precipitation Code for 2 hour accumulation (denotes if trace amount)', 'null','T')
+        WriteFlagAttributes(ppt2fvar,'ISD flags for 2 hour precipitation accumulation (from all four ISD fields - see ISD documentation)', INTMDI,'T')
+
+        WriteAttributes(ppt3dvar,'Depth of Precipitation Reported in 3 hours (from all four ISD fields)','latitude: longitude: time: sum ', FLTMDI, 'mm', 'T', 0, 999.8,'latitude longitude elevation', standard_name = 'lwe_thickness_of_precipitation_amount')
+        WriteFlagAttributes(ppt3cvar,'Precipitation Code for 3 hour accumulation (denotes if trace amount)', 'null','T')
+        WriteFlagAttributes(ppt3fvar,'ISD flags for 3 hour precipitation accumulation (from all four ISD fields - see ISD documentation)', INTMDI,'T')
+
+        WriteAttributes(ppt6dvar,'Depth of Precipitation Reported in 6 hour (from all four ISD fields)','latitude: longitude: time: sum ', FLTMDI, 'mm', 'T', 0, 999.8,'latitude longitude elevation', standard_name = 'lwe_thickness_of_precipitation_amount')
+        WriteFlagAttributes(ppt6cvar,'Precipitation Code for 6 hour accumulation (denotes if trace amount)', 'null','T')
+        WriteFlagAttributes(ppt6fvar,'ISD flags for 6 hour precipitation accumulation (from all four ISD fields - see ISD documentation)', INTMDI,'T')
+
+        WriteAttributes(ppt9dvar,'Depth of Precipitation Reported in 9 hour (from all four ISD fields)','latitude: longitude: time: sum ', FLTMDI, 'mm', 'T', 0, 999.8,'latitude longitude elevation', standard_name = 'lwe_thickness_of_precipitation_amount')
+        WriteFlagAttributes(ppt9cvar,'Precipitation Code for 9 hour accumulation (denotes if trace amount)', 'null','T')
+        WriteFlagAttributes(ppt9fvar,'ISD flags for 9 hour precipitation accumulation (from all four ISD fields - see ISD documentation)', INTMDI,'T')
+
+        WriteAttributes(ppt12dvar,'Depth of Precipitation Reported in 12 hour (from all four ISD fields)','latitude: longitude: time: sum ', FLTMDI, 'mm', 'T', 0, 999.8,'latitude longitude elevation', standard_name = 'lwe_thickness_of_precipitation_amount')
+        WriteFlagAttributes(ppt12cvar,'Precipitation Code for 12 hour accumulation (denotes if trace amount)', 'null','T')
+        WriteFlagAttributes(ppt12fvar,'ISD flags for 12 hour precipitation accumulation (from all four ISD fields - see ISD documentation)', INTMDI,'T')
+
+        WriteAttributes(ppt15dvar,'Depth of Precipitation Reported in 15 hour (from all four ISD fields)','latitude: longitude: time: sum ', FLTMDI, 'mm', 'T', 0, 999.8,'latitude longitude elevation', standard_name = 'lwe_thickness_of_precipitation_amount')
+        WriteFlagAttributes(ppt15cvar,'Precipitation Code for 15 hour accumulation (denotes if trace amount)', 'null','T')
+        WriteFlagAttributes(ppt15fvar,'ISD flags for 15 hour precipitation accumulation (from all four ISD fields - see ISD documentation)', INTMDI,'T')
+
+        WriteAttributes(ppt18dvar,'Depth of Precipitation Reported in 18 hour (from all four ISD fields)','latitude: longitude: time: sum ', FLTMDI, 'mm', 'T', 0, 999.8,'latitude longitude elevation', standard_name = 'lwe_thickness_of_precipitation_amount')
+        WriteFlagAttributes(ppt18cvar,'Precipitation Code for 18 hour accumulation (denotes if trace amount)', 'null','T')
+        WriteFlagAttributes(ppt18fvar,'ISD flags for 18 hour precipitation accumulation (from all four ISD fields - see ISD documentation)', INTMDI,'T')
+
+        WriteAttributes(ppt24dvar,'Depth of Precipitation Reported in 24 hour (from all four ISD fields)','latitude: longitude: time: sum ', FLTMDI, 'mm', 'T', 0, 999.8,'latitude longitude elevation', standard_name = 'lwe_thickness_of_precipitation_amount')
+        WriteFlagAttributes(ppt24cvar,'Precipitation Code for 24 hour accumulation (denotes if trace amount)', 'null','T')
+        WriteFlagAttributes(ppt24fvar,'ISD flags for 24 hour precipitation accumulation (from all four ISD fields - see ISD documentation)', INTMDI,'T')
 
         try:
             smin,smax=np.min(slp[np.where(slp != FLTMDI)[0]]),np.max(slp[np.where(slp != FLTMDI)[0]])
@@ -1565,6 +1609,9 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
 
         WriteAttributes(slpvar,'Reported Sea Level Pressure at screen height (~2m)','latitude: longitude: time: point (nearest to reporting hour)',FLTMDI, 'hPa', 'T', smin, smax, 'latitude longitude elevation',standard_name = 'air_pressure_at_sea_level')
         WriteFlagAttributes(slpfvar,'ISD flags for slp field - see ISD documentation',INTMDI,'T')
+
+        WriteAttributes(stnlpvar,'Reported Station Level Pressure at screen height (~2m)','latitude: longitude: time: point (nearest to reporting hour)',FLTMDI, 'hPa', 'T', smin, smax, 'latitude longitude elevation',standard_name = 'surface_air_pressure')
+        WriteFlagAttributes(stnlpfvar,'ISD flags for stnlp field - see ISD documentation',INTMDI,'T')
 
         WriteAttributes(sdvar,'Reported Sunshine Duration','latitude: longitude: time: point (nearest to reporting hour)', INTMDI, 'minutes', 'T', 0, 6000, 'latitude longitude elevation', standard_name = 'duration_of_sunshine')
         WriteFlagAttributes(sdfvar,'ISD flags sun duration field - see ISD documentation',INTMDI,'T')
@@ -1582,21 +1629,6 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
 
             WriteAttributes(swxvar,'Station reports of present significant weather phenomena','latitude: longitude: point (interval: 1 day)', INTMDI, '1', 'T', 0, 99,'latitude longitude elevation')
             WriteFlagAttributes(swxfvar,'ISD flags for reported present significant weather - see ISD documentation',INTMDI,'T')
-
-            WriteAttributes(ppt2pvar,'Reported period over which precipitation was recorded (second ISD field - n.b. not necessarily hourly)','latitude: longitude: point', long(INTMDI), 'hour', 'T', 0, 98,'latitude longitude elevation precip2_depth')
-            WriteAttributes(ppt2dvar,'Depth of Precipitation Reported over time period stated in precip2_period (second ISD field - n.b. not necessarily hourly accumulation)','latitude: longitude: sum', FLTMDI, 'mm', 'T', 0, 999.8,'latitude longitude elevation precip2_period', standard_name = 'lwe_thickness_of_precipitation_amount')
-            WriteFlagAttributes(ppt2cvar,'Denotes if trace amount', 'null','T')
-            WriteFlagAttributes(ppt2fvar,'ISD flags for second precip field - see ISD documentation', INTMDI,'T')
-
-            WriteAttributes(ppt3pvar,'Reported period over which precipitation was recorded (third ISD field - n.b. not necessarily hourly)','latitude: longitude: point', long(INTMDI), 'hour', 'T', 0, 98,'latitude longitude elevation precip3_depth')
-            WriteAttributes(ppt3dvar,'Depth of Precipitation Reported over time period stated in precip3_period (third ISD field - n.b. not necessarily hourly accumulation)','latitude: longitude: time: sum', FLTMDI, 'mm', 'T', 0, 999.8,'latitude longitude elevation precip3_period', standard_name = 'lwe_thickness_of_precipitation_amount')
-            WriteFlagAttributes(ppt3cvar,'Denotes if trace amount', 'null','T')
-            WriteFlagAttributes(ppt3fvar,'ISD flags for third precip field - see ISD documentation', INTMDI,'T')
-
-            WriteAttributes(ppt4pvar,'Reported period over which precipitation was recorded (fourth ISD field - n.b. not necessarily hourly)','latitude: longitude: point', long(INTMDI), 'hour', 'T', 0, 98,'latitude longitude elevation precip4_depth')
-            WriteAttributes(ppt4dvar,'Depth of Precipitation Reported over time period stated in precip4_period (fourth ISD field - n.b. not necessarily hourly accumulation)','latitude: longitude: time: sum', FLTMDI, 'mm', 'T', 0, 999.8,'latitude longitude elevation precip4_period', standard_name = 'lwe_thickness_of_precipitation_amount')
-            WriteFlagAttributes(ppt4cvar,'Denotes if trace amount', 'null','T')
-            WriteFlagAttributes(ppt4fvar,'ISD flags for fourth precip field - see ISD documentation', INTMDI,'T')
 
             try:
                 xtmin,xtmax=np.min(maximum_temp_value[np.where(maximum_temp_value != FLTMDI)[0]]),np.max(maximum_temp_value[np.where(maximum_temp_value != FLTMDI)[0]])
@@ -1664,12 +1696,37 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
         pswx1var[:]=past_sigwx1
         pswx1pvar[:]=past_sigwx1_period
         pswx1fvar[:]=past_sigwx1_flag
-        ppt1pvar[:]=precip1_period
         ppt1dvar[:]=precip1_depth
         ppt1cvar[:]=ncdf.stringtochar(precip1_condition)
         ppt1fvar[:]=precip1_flag
+        ppt2dvar[:]=precip2_depth
+        ppt2cvar[:]=ncdf.stringtochar(precip2_condition)
+        ppt2fvar[:]=precip2_flag
+        ppt3dvar[:]=precip3_depth
+        ppt3cvar[:]=ncdf.stringtochar(precip3_condition)
+        ppt3fvar[:]=precip3_flag
+        ppt6dvar[:]=precip6_depth
+        ppt6cvar[:]=ncdf.stringtochar(precip6_condition)
+        ppt6fvar[:]=precip6_flag
+        ppt9dvar[:]=precip9_depth
+        ppt9cvar[:]=ncdf.stringtochar(precip9_condition)
+        ppt9fvar[:]=precip9_flag
+        ppt12dvar[:]=precip12_depth
+        ppt12cvar[:]=ncdf.stringtochar(precip12_condition)
+        ppt12fvar[:]=precip12_flag
+        ppt15dvar[:]=precip15_depth
+        ppt15cvar[:]=ncdf.stringtochar(precip15_condition)
+        ppt15fvar[:]=precip15_flag
+        ppt18dvar[:]=precip18_depth
+        ppt18cvar[:]=ncdf.stringtochar(precip18_condition)
+        ppt18fvar[:]=precip18_flag
+        ppt24dvar[:]=precip24_depth
+        ppt24cvar[:]=ncdf.stringtochar(precip24_condition)
+        ppt24fvar[:]=precip24_flag
         slpvar[:]=slp
         slpfvar[:]=slp_flag
+        stnlpvar[:]=stnlp
+        stnlpfvar[:]=stnlp_flag
         sdvar[:]=sun_duration
         sdfvar[:]=sun_durationqc
         wgstpvar[:]=wind_gust_period
@@ -1684,18 +1741,6 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
             wtvar[:]=ncdf.stringtochar(windtypes)
             swxvar[:]=present_sigwx
             swxfvar[:]=present_sigwx_flags
-            ppt2pvar[:]=precip2_period
-            ppt2dvar[:]=precip2_depth
-            ppt2cvar[:]=ncdf.stringtochar(precip2_condition)
-            ppt2fvar[:]=precip2_flag
-            ppt3pvar[:]=precip3_period
-            ppt3dvar[:]=precip3_depth
-            ppt3cvar[:]=ncdf.stringtochar(precip3_condition)
-            ppt3fvar[:]=precip3_flag
-            ppt4pvar[:]=precip4_period
-            ppt4dvar[:]=precip4_depth
-            ppt4cvar[:]=ncdf.stringtochar(precip4_condition)
-            ppt4fvar[:]=precip4_flag
             maxtpvar[:]=maximum_temp_period
             maxtvvar[:]=maximum_temp_value
             maxtfvar[:]=maximum_temp_flags

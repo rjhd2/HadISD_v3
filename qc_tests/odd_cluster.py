@@ -6,9 +6,9 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 55                                            $:  Revision of last commit
+#$Rev:: 219                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2015-02-06 16:38:46 +0000 (Fri, 06 Feb 2015) $:  Date of last commit
+#$Date:: 2019-05-20 16:56:47 +0100 (Mon, 20 May 2019) $:  Date of last commit
 #************************************************************************
 
 import numpy as np
@@ -39,7 +39,7 @@ class OddCluster:
     __repr__ = __str__
   
 #*********************************************
-def oc_plots(station, cluster, time, start, indata, variable):
+def oc_plots(station, cluster, time, start, indata, variable, oc_details):
     '''
     Plot each odd cluster highlighted against surrounding data
 
@@ -66,7 +66,7 @@ def oc_plots(station, cluster, time, start, indata, variable):
     plt.plot(plot_times, indata[plot_start: plot_end], 'bo')
     plt.plot(plot_times[np.array(oc_details.locations) - plot_start], indata[oc_details.locations], 'ro')
 
-    plt.ylim(utils.sort_ts_ylim(filtered_data[plot_start: plot_end]))
+    plt.ylim(utils.sort_ts_ylim(indata[plot_start: plot_end]))
     plt.ylabel(YLABELS[variable])
     plt.show()
 
@@ -221,7 +221,7 @@ def occ_after_cluster(cluster, obs_type, time, flags):
 
 
 #*********************************************
-def occ(station, variable_list, flag_col, datastart, logfile, diagnostics = False, plots = False, second = False):
+def occ(station, variable_list, flag_col, datastart, logfile, diagnostics = False, plots = False):
     '''
     Check for odd clusters of data surrounded by missing 
         up to 6hr/24hr surrounded by at least 48 on each side
@@ -233,7 +233,6 @@ def occ(station, variable_list, flag_col, datastart, logfile, diagnostics = Fals
     :param file logfile: logfile to store outputs
     :param bool diagnostics: do extra verbose output
     :param bool plots: do plots
-    :param bool second: run for second time
 
     :returns:    
     '''
@@ -252,9 +251,6 @@ def occ(station, variable_list, flag_col, datastart, logfile, diagnostics = Fals
         var_flags = station.qc_flags[:,flag_col[v]]
 	
         prev_flag_number = 0
-        if second:
-            # count currently existing flags:
-            prev_flag_number = len(var_flags[var_flags != 0])	
 
         # using IDL copy as method to ensure reproducibility (initially)
         
@@ -269,7 +265,7 @@ def occ(station, variable_list, flag_col, datastart, logfile, diagnostics = Fals
 
                 if plots and (obs_type == 3) and (time - oc_details.end >= 48):
                     # do plotting if matches flagging criteria
-                    oc_plots(station, oc_details, time, datastart, filtered_data, variable)
+                    oc_plots(station, oc_details, time, datastart, filtered_data, variable, oc_details)
 
                 oc_details, obs_type = options[obs_type](oc_details, obs_type, time, var_flags)
 
@@ -284,10 +280,8 @@ def occ(station, variable_list, flag_col, datastart, logfile, diagnostics = Fals
         station.qc_flags[:,flag_col[v]] = var_flags
 
         flag_locs = np.where(station.qc_flags[:, flag_col[v]] != 0)
-        if plots or diagnostics:
-            utils.print_flagged_obs_number(logfile, "Odd Cluster", variable, len(flag_locs[0]) - prev_flag_number, noWrite = True)
-        else:
-            utils.print_flagged_obs_number(logfile, "Odd Cluster", variable, len(flag_locs[0]) - prev_flag_number)
+        utils.print_flagged_obs_number(logfile, "Odd Cluster", variable, len(flag_locs[0]) - prev_flag_number, noWrite = diagnostics)
+        
         
         # copy flags into attribute
         st_var.flags[flag_locs] = 1

@@ -1,24 +1,32 @@
 #!/usr/local/sci/bin/python2.7
 #------------------------------------------------------------
 #                    SVN Info
-#$Rev:: 120                                           $:  Revision of last commit
+#$Rev:: 219                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2017-02-24 10:34:07 +0000 (Fri, 24 Feb 2017) $:  Date of last commit
+#$Date:: 2019-05-20 16:56:47 +0100 (Mon, 20 May 2019) $:  Date of last commit
 #------------------------------------------------------------
 # START
 #------------------------------------------------------------
 """
+station_selection.py invoked by typing::
+
+  python2.7 station_selection.py --datastart 1931 --data_end 2018 --plots --update_files [--uk]
+
 Downloads the ISD inventories and constructs a set of stations to use.
 
-Input arguments
+Input arguments:
 
---data_start        = [1931]           First year of data
---data_end          = [current year]   Last year of data
---min_years_present = [15]             Number of years between required between listed start and end date to select station
---updateFiles       = [False]          Download updated files from ISD server
---plots             = [False]          Create plots
---uk                = [False]          Run only for UK stations (03*)
+--data_start        [1931]           First year of data
 
+--data_end          [current year]   Last year of data
+
+--years_present     [15]             Number of years between required between listed start and end date to select station
+
+--update_files      [False]          Download updated files from ISD server
+
+--plots             [False]          Create plots into the image directory
+
+--uk                [False]          Run only for UK stations (03*)
 """
 
 import struct
@@ -36,7 +44,9 @@ import cartopy.crs as ccrs
 # RJHD Utilities
 import sort_canada as s_canada
 import qc_utils as utils
+import selection_utils as sel_utils
 from set_paths_and_vars import *
+import compare_station_lists as compare_lists
 
 
 ISD_LISTING = "isd-history.txt"
@@ -48,11 +58,6 @@ END_YEAR = dt.date.today().year
 
 DAYS_IN_AVERAGE_MONTH=[31,28,31,30,31,30,31,31,30,31,30,31]
 
-# merging limits
-DISTANCE_THRESHOLD = 25. # km - 1/e drop in probability by 25km sep
-ELEVATION_THRESHOLD = 100. # m - 1/e drop in probability by 100m sep
-LATITUDE_THRESHOLD = 2 # deg
-PROB_THRESHOLD = 0.5
 
 #*********************************************
 class Station(object):
@@ -320,14 +325,14 @@ def process_germany(all_stations):
 
     for gid in german_ids:
 
-        old_id_loc = np.where(station_ids == "09"+station_ids[gid][2:])
+        old_id_loc, = np.where(station_ids == "09"+station_ids[gid][2:])
 
-        if len(old_id_loc[0]) != 0:
+        if len(old_id_loc) != 0:
             # there is a match - check distance, elev and date.
             old_stn = all_stations[old_id_loc[0]]
-            probs = do_match(old_stn, all_stations[gid])
+            probs = sel_utils.do_match(old_stn, all_stations[gid], sel_utils.LATITUDE_THRESHOLD, sel_utils.ELEVATION_THRESHOLD, sel_utils.DISTANCE_THRESHOLD)
 
-            if np.product(probs) > PROB_THRESHOLD:
+            if np.product(probs) > sel_utils.PROB_THRESHOLD:
                 g_count += 1
 
                 print "Merging {} and {}".format(all_stations[gid].id, old_stn.id)
@@ -489,65 +494,6 @@ def plot_station_number_over_time(candidate_stations, data_start, outfile, after
         return station_numbers # plot_station_number_over_time
 
 #****************************************************
-def jaccard(seq1, seq2):
-    """
-    Compute the Jaccard distance between the two sequences `seq1` and `seq2`.
-    
-    They should contain hashable items.
-	
-    The return value is a float between 0 and 1, where 1 means equal, and 0 totally different.
-    """
-    set1, set2 = set(seq1), set(seq2)
-    return len(set1 & set2) / float(len(set1 | set2)) # jaccard
-
-
-#****************************************************
-def do_match(station1, station2):
-    """
-    Perform the match between two stations.  
-
-    Do initial latitude check to speed up the test
-    (not longitude as this isn't a constant distance)
-
-    Return probabilities for elevation, separation and Jaccard Index
-
-    :param Station Class station1: 
-    :param Station Class station2: 
-    :returns:
-       list of 3 probabilities [elev, dist, jaccard]
-    """
-
-
-    # latitude - pre check to make quicker
-    if np.abs(station1.lat - station2.lat) > LATITUDE_THRESHOLD:
-        return False
-
-    # elevation
-    height = np.abs(station1.elev - station2.elev)
-    if height < (ELEVATION_THRESHOLD*4):
-        height_Pr = np.exp(-1.0 * height / ELEVATION_THRESHOLD)
-    else:
-        height_Pr = 0
-
-    # latitude & longitude
-    distance, bearing = utils.get_dist_and_bearing([station1.lat, station1.lon],[station2.lat, station2.lon])
-    if distance < (DISTANCE_THRESHOLD*4):
-        dist_Pr = np.exp(-1.0 * distance / DISTANCE_THRESHOLD)
-    else:
-        dist_Pr = 0.
-
-    # Jaccard Index on name - remove all whitespace
-    jac_Pr = jaccard(station1.name.strip(), station2.name.strip())
-
-    # Jaccard Index on METAR call sign
-    if station1.call != "" and station2.call != "":
-        jac_Pr_metar = jaccard(station1.call, station2.call)
-    
-
-    # name matching
-    return [height_Pr, dist_Pr, jac_Pr] # do_match
-
-#****************************************************
 def find_matches(candidate_stations):
     """
     Find the matches within the station list.  
@@ -569,9 +515,9 @@ def find_matches(candidate_stations):
         for i2,stn2 in enumerate(candidate_stations):
             if i2 <= i1: continue
 
-            probs = do_match(stn1,stn2)
+            probs = sel_utils.do_match(stn1, stn2, sel_utils.LATITUDE_THRESHOLD, sel_utils.ELEVATION_THRESHOLD, sel_utils.DISTANCE_THRESHOLD)
 
-            if np.product(probs) > PROB_THRESHOLD:
+            if np.product(probs) > sel_utils.PROB_THRESHOLD:
 
                 match[i1] += [i2] 
                 match[i2] += [i1] 
@@ -701,11 +647,11 @@ def external_merges(candidate_stations, all_stations, data_start, data_end):
     for c_stn, candidate in enumerate(candidate_stations):
         for a_stn, target in enumerate(all_stations):
             if candidate.id != target.id:
-                probs = do_match(candidate, target)
-                if np.product(probs) > PROB_THRESHOLD:
+                probs = sel_utils.do_match(candidate, target, sel_utils.LATITUDE_THRESHOLD, sel_utils.ELEVATION_THRESHOLD, sel_utils.DISTANCE_THRESHOLD)
+                if np.product(probs) > sel_utils.PROB_THRESHOLD:
                    match[c_stn] += [a_stn]
                    reverse_match[a_stn] +=[[c_stn, np.product(probs)]]
-                   outfile.write("{:30s} {:13s} {:30s} {:13s} {} {:8.4f}\n".format(candidate.name, candidate.id, target.name, targat.id, " ".join(["{:8.4f}".format(p) for p in probs]), np.product(probs)))
+                   outfile.write("{:30s} {:13s} {:30s} {:13s} {} {:8.4f}\n".format(candidate.name, candidate.id, target.name, target.id, " ".join(["{:8.4f}".format(p) for p in probs]), np.product(probs)))
 
 
     # check no stations being merged into two primaries
@@ -830,14 +776,14 @@ def run_selection(data_start = 1931,
     candidate_stations = external_merges(candidate_stations, all_stations, data_start, data_end)
 
     # write final set of merges
-    outfile = file(INPUT_FILE_LOCS+"final_mergers.txt", 'w')                
+    outfile = file(INPUT_FILE_LOCS + MERGER_LIST, 'w')                
     for stn in candidate_stations:
         if stn.mergers != []:
             outfile.write(stn.id + " "+" ".join(stn.mergers)+"\n")
     outfile.close()
 
     # write candidate files
-    outfile = file(INPUT_FILE_LOCS+"candidate_stations.txt",'w')
+    outfile = file(INPUT_FILE_LOCS + STATION_LIST,'w')
     for stn in candidate_stations:
         outfile.write("{:12s} {:7.3f} {:8.3f} {:7.1f}\n".format(stn.id, stn.lat, stn.lon, stn.elev))
     outfile.close()
@@ -946,6 +892,10 @@ def run_selection(data_start = 1931,
 
             plot_stations(plot_list, "hadisd_station_number_in_{}_{}.png".format(year, HADISD_VERSION), title = str(year)),
             print year, len(plot_list)
+
+
+    # and compare the station lists from previous and this version
+    compare_lists.compare()
 
     return # run_selection
 

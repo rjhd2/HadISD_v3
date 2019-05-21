@@ -6,13 +6,15 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 67                                            $:  Revision of last commit
+#$Rev:: 219                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2015-05-01 16:18:52 +0100 (Fri, 01 May 2015) $:  Date of last commit
+#$Date:: 2019-05-20 16:56:47 +0100 (Mon, 20 May 2019) $:  Date of last commit
 #************************************************************************
 import numpy as np
 import scipy as sp
 import datetime as dt
+import calendar
+import copy
 # RJHD routines
 
 import qc_utils as utils
@@ -100,12 +102,10 @@ def evc_plot_hist(plot_variances, iqr_threshold, title):
 
 
 #************************************************************************
-def evc(station, variable_list, flag_col, start, end, logfile, diagnostics = False, plots = False, idl = False):
+def evc(station, variable_list, flag_col, start, end, logfile, diagnostics = False, plots = False, idl = False, doMonth = False):
     
     if plots or diagnostics:
         import matplotlib.pyplot as plt
-        import calendar
-
     
     # very similar to climatological check - ensure that not duplicating
     
@@ -113,21 +113,32 @@ def evc(station, variable_list, flag_col, start, end, logfile, diagnostics = Fal
     
         st_var = getattr(station, variable)
     
-        reporting_resolution = utils.reporting_accuracy(utils.apply_filter_flags(st_var))
-        reporting_freq = utils.reporting_frequency(utils.apply_filter_flags(st_var))
+        reporting_resolution = utils.reporting_accuracy(utils.apply_filter_flags(st_var, doMonth = doMonth, start = start, end = end))
+        reporting_freq = utils.reporting_frequency(utils.apply_filter_flags(st_var, doMonth = doMonth, start = start, end = end))
    
+        # masking final incomplete year here.
+        st_var_complete_year = copy.deepcopy(st_var)
+        if doMonth:
+            # restrict the incomplete year if appropriate - keep other flagged obs.
+            full_year_end = utils.get_first_hour_this_year(start, end)
+            st_var_complete_year.data.mask[full_year_end :] = True
+
         month_ranges = utils.month_starts_in_pairs(start, end)
         month_ranges = month_ranges.reshape(-1,12,2)
 
         month_data_count = np.zeros(month_ranges.shape[0:2])
+        complete_data_count = np.zeros(month_ranges.shape[0:2])
 
         # for each month
         for month in range(12):
 
-            # set up hourly climatologies
+            # set up hourly climatologies on monthly basis
             hourly_clims = np.zeros(24)
             hourly_clims.fill(st_var.data.fill_value)
+            hourly_clims_complete = np.zeros(24)
+            hourly_clims_complete.fill(st_var.data.fill_value)
 
+            this_month_complete, year_ids, complete_data_count[:,month] = utils.concatenate_months(month_ranges[:,month,:], st_var_complete_year.data, hours = True)
             this_month, year_ids, month_data_count[:,month] = utils.concatenate_months(month_ranges[:,month,:], st_var.data, hours = True)
 
             
@@ -152,44 +163,59 @@ def evc(station, variable_list, flag_col, start, end, logfile, diagnostics = Fal
             #         year_ids.extend([year for x in range(this_year.shape[0])])
                     
             #         month_data_count[year,month] = len(this_year.compressed())
-
-                
+             
                   
             # winsorize and get hourly climatology 
             for h in range(24):
                 
+                this_hour_complete = this_month_complete[:,h]
                 this_hour = this_month[:,h]
                 
-                if len(this_hour.compressed()) > 100:
-
+                if len(this_hour_complete.compressed()) > DATA_COUNT_THRESHOLD:
                     
                     # winsorize & climatologies - done to match IDL
                     if idl:
+                        this_hour_winsorized_complete = utils.winsorize(np.append(this_hour_complete.compressed(), -999999), 0.05, idl = idl)
+                        hourly_clims_complete[h] = np.ma.sum(this_hour_winsorized_complete)/(len(this_hour_winsorized_complete) - 1)
+
                         this_hour_winsorized = utils.winsorize(np.append(this_hour.compressed(), -999999), 0.05, idl = idl)
                         hourly_clims[h] = np.ma.sum(this_hour_winsorized)/(len(this_hour_winsorized) - 1)
                         
                     else:
+                        this_hour_winsorized_complete = utils.winsorize(this_hour_complete.compressed(), 0.05, idl = idl)
+                        hourly_clims_complete[h] = np.ma.mean(this_hour_winsorized_complete)
+                  
                         this_hour_winsorized = utils.winsorize(this_hour.compressed(), 0.05, idl = idl)
-                        hourly_clims[h] = np.ma.mean(this_hour_winsorized)
-                    
+                        hourly_clims[h] = np.ma.mean(this_hour_winsorized)                  
             
-            hourly_clims = np.ma.masked_where(hourly_clims == st_var.data.fill_value, hourly_clims)           
+            if diagnostics:
+                print hourly_clims_complete
+
+            # and make the anomalies from hourly climatologies
+            hourly_clims_complete = np.ma.masked_where(hourly_clims_complete == st_var.data.fill_value, hourly_clims_complete)
+            hourly_clims = np.ma.masked_where(hourly_clims == st_var.data.fill_value, hourly_clims)
+           
+            anomalies_complete = this_month_complete - np.tile(hourly_clims_complete, (this_month.shape[0], 1))
             anomalies = this_month - np.tile(hourly_clims, (this_month.shape[0], 1))
             
             # extract IQR of anomalies (using 1/2 value to match IDL)
-            if len(anomalies.compressed()) >= 10:
+            if len(anomalies_complete.compressed()) >= 10:
                 
-                iqr = utils.IQR(anomalies.compressed().reshape(-1)) / 2. # to match IDL
+                iqr = utils.IQR(anomalies_complete.compressed().reshape(-1)) / 2. # to match IDL
                 if iqr < 1.5: iqr = 1.5
 
             else:
                 iqr = st_var.mdi
             
+            # normalise anomalies with the IQR
             normed_anomalies = anomalies / iqr
+            normed_anomalies_complete = anomalies_complete / iqr
             
-
+            # prepare to calculate variances
             variances = np.ma.zeros(month_ranges.shape[0])
-            variances.mask = [False for i in range(month_ranges.shape[0])]
+            variances.mask = np.zeros(variances.shape)
+            complete_variances = np.ma.zeros(month_ranges.shape[0])
+            complete_variances.mask = np.zeros(variances.shape)
             rep_accuracies = np.zeros(month_ranges.shape[0])
             rep_freqs = np.zeros(month_ranges.shape[0])
             
@@ -207,39 +233,44 @@ def evc(station, variable_list, flag_col, start, end, logfile, diagnostics = Fal
                 this_year = normed_anomalies[year_locs,:]
                 this_year = this_year.reshape(-1)
                 
-            # end of similarity with Climatological check
+                this_year_complete = normed_anomalies_complete[year_locs,:]
+                this_year_complete = this_year_complete.reshape(-1)
+# end of similarity with Climatological check
             
                 if len(this_year.compressed()) >= 30:
             
                     variances[y] = utils.mean_absolute_deviation(this_year, median = True)
+                    complete_variances[y] = utils.mean_absolute_deviation(this_year_complete, median = True)
                     
                     rep_accuracies[y] = utils.reporting_accuracy(this_year)
                     rep_freqs[y] = utils.reporting_frequency(this_year)
 
                 else:
                     variances.mask[y] = True
+                    complete_variances.mask[y] = True
 
-            good = np.where(month_data_count[:,month] >= 100)
+            good = np.where(month_data_count[:,month] >= DATA_COUNT_THRESHOLD)
             
             # get median and IQR of variance for all years for this month
             if len(good[0]) >= 10:
+                median_variance = np.ma.median(complete_variances[good])
                 
-                median_variance = np.median(variances[good])
-                
-                iqr_variance = utils.IQR(variances[good]) / 2. # to match IDL
+                iqr_variance = utils.IQR(complete_variances[good]) / 2. # to match IDL
                 
                 if iqr_variance < 0.01: iqr_variance = 0.01
-            else:
-                
+            else:                
                 median_variance = st_var.mdi
                 iqr_variance = st_var.mdi
 
-                
+            if diagnostics:
+                print median_variance, iqr_variance, complete_variances
+
             # if SLP, then get median and MAD of SLP and windspeed for month
             if variable in ["slp", "windspeeds"]:
                 
-                winds = getattr(station, "windspeeds")
-                slp = getattr(station, "slp")
+                # copy to prevent masking on monthly runs
+                winds = copy.deepcopy(getattr(station, "windspeeds"))
+                slp = copy.deepcopy(getattr(station, "slp"))
         
                 # refactor this as similar in style to how target data extracted  
                 for y, year in enumerate(range(month_ranges.shape[0])):
@@ -252,14 +283,25 @@ def evc(station, variable_list, flag_col, start, end, logfile, diagnostics = Fal
                         slp_month = slp_year.reshape(-1,24)
                                             
                     else:
-                        winds_year = winds.data[month_ranges[year,month][0]:month_ranges[year,month][1]]                  
+                        winds_year = winds.data[month_ranges[year,month][0]:month_ranges[year,month][1]]        
                         winds_year = winds_year.reshape(-1,24)
+
+                        if y == month_ranges.shape[0]-1 and doMonth:
+                            # if incomplete final year, then mask
+                            winds_year.mask = True
+
                         winds_month = np.ma.concatenate((winds_month, winds_year), axis = 0)
                         
-                        slp_year = slp.data[month_ranges[year,month][0]:month_ranges[year,month][1]]                  
+                        slp_year = slp.data[month_ranges[year,month][0]:month_ranges[year,month][1]]
                         slp_year =  slp_year.reshape(-1,24)
+
+                        if y == month_ranges.shape[0]-1 and doMonth:
+                            # if incomplete final year, then mask
+                            slp_year.mask = True
+
                         slp_month = np.ma.concatenate((slp_month, slp_year), axis = 0)
-                        
+
+                   
                 median_wind = np.ma.median(winds_month)
                 median_slp  = np.ma.median(slp_month)
                 
@@ -368,7 +410,7 @@ def evc(station, variable_list, flag_col, start, end, logfile, diagnostics = Fal
                                 evc_plot_slp_wind(plot_times, slp_month, diffs, median_slp, slp_MAD, winds_month, median_wind, wind_MAD)
 
                     else:
-                        
+                        # not SLP
                         iqr_threshold = 8.
                         
                         if (rep_accuracies[y] != reporting_resolution) and \
@@ -383,7 +425,6 @@ def evc(station, variable_list, flag_col, start, end, logfile, diagnostics = Fal
                             # remove the data 
                             station.qc_flags[month_ranges[year,month,0]:month_ranges[year,month,1], flag_col[v]] = 1
 
-
             if plots:
                 plot_variances = (variances - median_variance) / iqr_variance
 
@@ -392,10 +433,7 @@ def evc(station, variable_list, flag_col, start, end, logfile, diagnostics = Fal
                 evc_plot_hist(plot_variances, iqr_threshold, "Variance Check - %s - %s" % (variable, calendar.month_name[month+1]))
  
         flag_locs = np.where(station.qc_flags[:, flag_col[v]] != 0)
-        if plots or diagnostics:
-            utils.print_flagged_obs_number(logfile, "Variance", variable, len(flag_locs[0]), noWrite = True)
-        else:
-            utils.print_flagged_obs_number(logfile, "Variance", variable, len(flag_locs[0]))
+        utils.print_flagged_obs_number(logfile, "Variance", variable, len(flag_locs[0]), noWrite = diagnostics)
             
         # copy flags into attribute
         st_var.flags[flag_locs] = 1

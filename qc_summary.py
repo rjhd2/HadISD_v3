@@ -29,13 +29,12 @@ qc_test=['DUP','TFV','DFV','SFV','DNL','TGP','DGP','SGP','TRC','DRC',\
 	  'LMB','MMB','HMB','BMB','OCT','OCD','OCW','OCS','TVR','DVR',\
 	  'SVR','WVR','WSL','WDL','WRS']
 
-station_list = "candidate_stations.txt"
 process_vars = ["temperatures","dewpoints","slp","windspeeds","total_cloud_cover"]
 diagnostics = False
 start_time_string = dt.datetime.strftime(dt.datetime.now(), "%Y%m%d")
 
 try:
-    station_info = np.genfromtxt(os.path.join(INPUT_FILE_LOCS, station_list), dtype=(str))
+    station_info = np.genfromtxt(os.path.join(INPUT_FILE_LOCS, STATION_LIST), dtype=(str))
 except IOError:
     print "station list not found"
     sys.exit()

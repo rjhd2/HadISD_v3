@@ -1,9 +1,9 @@
 #!/usr/local/sci/bin/python
 #************************************************************************
 #                    SVN Info
-#$Rev:: 219                                           $:  Revision of last commit
+#$Rev:: 150                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2019-05-20 16:56:47 +0100 (Mon, 20 May 2019) $:  Date of last commit
+#$Date:: 2018-03-13 15:45:15 +0000 (Tue, 13 Mar 2018) $:  Date of last commit
 #************************************************************************
 
 '''
@@ -382,7 +382,7 @@ def write_coordinates(outfile, short_name, standard_name, long_name, units, axis
     return # write_coordinates
 
 #************************************************************************
-def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_zip = True, Extra = False, doCanada = True): 
+def MakeNetcdfFiles(startyear, endyear, restart_id="", end_id="", do_zip = True, Extra=False): 
     """
     Parse the ASCII files and do the NetCDF file creation
 
@@ -436,30 +436,19 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
 
     Composites=ReadComposites(os.path.join(INPUT_FILE_LOCS, MERGER_LIST))
 
-    # adjust the end points for clarity and ease of use
-    if ENDMONTH == 12:
-        # easier to use the 1st January at 00:00
-        ENDYEAR += 1
-        ENDMONTH = 1
-    else:
-        # easier to use the 1st of the following month at 00:00
-        ENDMONTH += 1
-
-
-    DaysBetween=dt.datetime(ENDYEAR, ENDMONTH, 1, 0, 0) - dt.datetime(STARTYEAR, 1, 1, 0, 0)
+    DaysBetween=dt.datetime(endyear+1,1,1,0,0)-dt.datetime(startyear,1,1,0,0)
     HoursBetween=int(DaysBetween.days*24.)
 
     TimeStamps=np.linspace(0,HoursBetween-1,HoursBetween) # keep in integer hours
 
-    ValidYears=np.arange(STARTYEAR, ENDYEAR+1)
+    ValidYears=np.linspace(startyear,endyear,(endyear-startyear+1))
     dubiousfile=LOG_OUTFILE_LOCS+'dubious_ISD_data_files.txt'
 
     # read in Canadian station list
-    if doCanada:
-        Canadian_stations_info = np.genfromtxt(INPUT_FILE_LOCS + "Canada_time_ranges.dat", dtype=(str), delimiter = [12,20,20])
-        Canadian_station_ids = Canadian_stations_info[:,0]
-        Canadian_station_start = np.array([dt.datetime.strptime(d.strip(), "%Y-%m-%d %H:%M:%S") for d in Canadian_stations_info[:,1]])
-        Canadian_station_end   = np.array([dt.datetime.strptime(d.strip(), "%Y-%m-%d %H:%M:%S") for d in Canadian_stations_info[:,2]])
+    Canadian_stations_info = np.genfromtxt(INPUT_FILE_LOCS + "Canada_time_ranges.dat", dtype=(str), delimiter = [12,20,20])
+    Canadian_station_ids = Canadian_stations_info[:,0]
+    Canadian_station_start = np.array([dt.datetime.strptime(d.strip(), "%Y-%m-%d %H:%M:%S") for d in Canadian_stations_info[:,1]])
+    Canadian_station_end   = np.array([dt.datetime.strptime(d.strip(), "%Y-%m-%d %H:%M:%S") for d in Canadian_stations_info[:,2]])
   
     dbg_sttime=dt.datetime.now()
 
@@ -620,7 +609,7 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
 
             rfile_year=int(rfile.split('-')[-1].split('.')[0])
 
-            rfile_days=dt.datetime(rfile_year,1,1,0,0)-dt.datetime(STARTYEAR,1,1,0,0)
+            rfile_days=dt.datetime(rfile_year,1,1,0,0)-dt.datetime(startyear,1,1,0,0)
             rfile_hours=rfile_days.days*24.
 
             rfile_ydays=dt.datetime(rfile_year+1,1,1,0,0)-dt.datetime(rfile_year,1,1,0,0)
@@ -667,7 +656,6 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
                                 day=day+1
                                 hour=hour-24
                             
-                            # adjust the day (and month)
                             dummy, ndays = calendar.monthrange(year, month)
                             if day <= 0:
                                 month = month -1
@@ -686,32 +674,24 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
 
                             dt_time = dt.datetime(year, month, day, hour, minute)
 
-                            if dt_time > dt.datetime(ENDYEAR, ENDMONTH, 1, 0, 0):
-                                # data beyond the end of the timeperiod.  Ignored
-                                if not done_print:
-                                    print "skipping rest of station {} as {} after end of selected period ({})".format(raw_station, dt.datetime.strftime(dt_time, "%Y-%m-%d %H:%M"), dt.datetime.strftime(dt.datetime(ENDYEAR, ENDMONTH, 1, 0, 0), "%Y-%m-%d %H:%M"))
-                                    done_print = True
-                                continue
+                            if raw_station in Canadian_station_ids:
+                                # then test for restrictions on start/end times
+                                loc, = np.where(Canadian_station_ids == raw_station)
 
-                            if doCanada:
-                                if raw_station in Canadian_station_ids:
-                                    # then test for restrictions on start/end times
-                                    loc, = np.where(Canadian_station_ids == raw_station)
-
-                                    if dt_time < Canadian_station_start[loc[0]]:
-                                        if not done_print:
-                                            print "skipping year {} of station {} as identified as undocumented move by Environment Canada".format(year, raw_station)
-                                            done_print = True
-                                        continue
-                                    if dt_time > Canadian_station_end[loc[0]]:
-                                        if not done_print:
-                                            print "skipping year {} of station {} as identified as undocumented move by Environment Canada".format(year, raw_station)
-                                            done_print = True
-                                        continue
+                                if dt_time < Canadian_station_start[loc[0]]:
+                                    if not done_print:
+                                        print "skipping year {} of station {} as identified as undocumented move by Environment Canada".format(year, raw_station)
+                                        done_print = True
+                                    continue
+                                if dt_time > Canadian_station_end[loc[0]]:
+                                    if not done_print:
+                                        print "skipping year {} of station {} as identified as undocumented move by Environment Canada".format(year, raw_station)
+                                        done_print = True
+                                    continue
 
 
                             # integer hours
-                            obs_time=ncdf.date2num(dt_time, units='hours since '+str(STARTYEAR)+'-01-01 00:00:00', calendar='julian')
+                            obs_time=ncdf.date2num(dt_time, units='hours since '+str(startyear)+'-01-01 00:00:00', calendar='julian')
 
                             string_obs_time=dt.datetime.strftime(dt_time,"%d-%m-%Y, %H:%M")
 
@@ -720,7 +700,7 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
                             time_loc=int(round(obs_time))
 
                             # test if this time_loc out of bounds:
-                            #  e.g. if 2350 on 31/12/ENDYEAR then should not
+                            #  e.g. if 2350 on 31/12/endyear then should not
                             #       takes the obs as it belongs to following year
                             if time_loc != HoursBetween:
 
@@ -1295,7 +1275,6 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
                                 # end Extra variables    
                             # end if time_loc != HoursBetween
                         # end line in file loop
-
                 except IOError:
                      print "Cannot find file: ", rfile
 
@@ -1469,16 +1448,16 @@ def MakeNetcdfFiles(STARTYEAR, ENDYEAR, ENDMONTH, restart_id="", end_id="", do_z
         timesvar.long_name='time_of_measurement'
         timesvar.standard_name='time'
         if hours:
-            timesvar.units='hours since {}'.format(dt.datetime.strftime(dt.datetime(STARTYEAR,1,1,0,0), "%Y-%m-%d %H:%M"))
+            timesvar.units='hours since {}'.format(dt.datetime.strftime(dt.datetime(startyear,1,1,0,0), "%Y-%m-%d %H:%M"))
         else:
-            timesvar.units='days since {}'.format(dt.datetime.strftime(dt.datetime(STARTYEAR,1,1,0,0), "%Y-%m-%d %H:%M"))
+            timesvar.units='days since {}'.format(dt.datetime.strftime(dt.datetime(startyear,1,1,0,0), "%Y-%m-%d %H:%M"))
         timesvar.axis='T'
         timesvar.calendar='gregorian'
         timesvar.valid_min=0.
-        timesvar.start_year = "{}".format(STARTYEAR)
-        timesvar.end_year = "{}".format(ENDYEAR)
+        timesvar.start_year = "{}".format(startyear)
+        timesvar.end_year = "{}".format(endyear)
         timesvar.start_month = "1"
-        timesvar.end_month = "{}".format(ENDMONTH)
+        timesvar.end_month = "12"
 #        timesvar.coordinates = "time"
 
         # lonsvar.standard_name = "longitude"
@@ -1733,31 +1712,33 @@ if __name__=="__main__":
     """
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--start', dest='STARTYEAR', action='store', default = 1931,
-                        help='Start year, default = 1931', type = int)
-    parser.add_argument('--endyear', dest='ENDYEAR', action='store', default = datetime.datetime.now().year,
-                        help='End year (inclusive), default = current', type = int)
-    parser.add_argument('--endmonth', dest='ENDMONTH', action='store', default = datetime.datetime.now().month,
-                        help='End month (inclusive), default = current', type = int)
+    parser.add_argument('--start', dest='startyear', action='store', default = 1931,
+                        help='Start year, default = 1931')
+    parser.add_argument('--end', dest='endyear', action='store', default = datetime.datetime.now().year,
+                        help='End year, default = current')
     parser.add_argument('--restart_id', dest='restart_id', action='store', default = "",
                         help='Restart ID for truncated run, default = ""')
     parser.add_argument('--end_id', dest='end_id', action='store', default = "",
                         help='End ID for truncated run, default = ""')
     parser.add_argument('--extra', dest='extra', action='store_true', default = False,
                         help='Include extra parameters, default = False')
-    parser.add_argument('--doCanada', dest='doCanada', action='store_false', default = True,
-                        help='Include adjustments for Canadian stations, default = True')
 
     args = parser.parse_args()
+
+    startyear=int(args.startyear)
+    endyear=int(args.endyear)
+    restart_id=args.restart_id
+    end_id=args.end_id
+    Extra=args.extra
 
     print "\n Making NetCDF files from ISD ASCII files \n"
 
     print "Reading data from %s" % ISD_DATA_LOCS
     print "Writing data to %s" % NETCDF_DATA_LOCS
-    print "Start year %i, End year %i (inclusive)" % (args.STARTYEAR,args.ENDYEAR)
-    print "Restart ID = {}, End ID = {}, Include Extra parameters = {}".format(args.restart_id, args.end_id, args.extra)
+    print "Start year %i, End year %i (inclusive)" % (startyear, endyear)
+    print "Restart ID = {}, End ID = {}, Include Extra parameters = {}".format(restart_id, end_id, Extra)
   
-    MakeNetcdfFiles(args.STARTYEAR, args.ENDYEAR, args.ENDMONTH, restart_id = args.restart_id, end_id = args.end_id, Extra = args.extra, doCanada = args.doCanada)
+    MakeNetcdfFiles(startyear, endyear, restart_id=restart_id,end_id=end_id,Extra=Extra)
 
 
 

@@ -1,16 +1,19 @@
-title			HadISD
-institution		Met Office Hadley Centre, Exeter, UK
-source			HadISD data product
-references		Dunn, Willett, Parker & Mitchell, 2016, submitted
-creator_name		Robert Dunn
-creator_url		www.metoffice.gov.uk
-creator_email		robert.dunn@metoffice.gov.uk
-time_coverage_start	1931-01-01T00:00Z
-time_coverage_end	2017-01-01T00:00Z
-cdm_data_type		station
-keywords		sub-daily, station, extremes, temperature, dewpoint, pressure, wind_speed, wind_direction, cloud_cover
-summary			Quality-controlled, sub-daily, station dataset containing temperature, dewpoint, pressure, wind speed & direction and cloud cover.
-hadisd_version		2.0.1.2016p
-isd_version		---
-isd_date		19 january 2017
-license			HadISD is distributed under the Non-Commercial Government Licence: http://www.nationalarchives.gov.uk/doc/non-commercial-government-licence/non-commercial-government-licence.htm.  The data are available for non-commercial use with attribution to the data providers. Please cite Dunn et al (2012). 
+title				HadISD
+institution			Met Office Hadley Centre, Exeter, UK
+source				HadISD data product
+references			Dunn, 2018, Met Office Hadley Centre Technical Note #103; Dunn, Willett, Parker & Mitchell, 2016, Geosci. Instrum. Method. Data Syst., 5, 473-491 
+creator_name			Robert Dunn
+creator_url			www.metoffice.gov.uk
+creator_email			robert.dunn@metoffice.gov.uk
+keywords			sub-daily, station, extremes, temperature, dewpoint, pressure, wind_speed, wind_direction, cloud_cover
+summary				Quality-controlled, sub-daily, station dataset containing temperature, dewpoint, pressure, wind speed & direction and cloud cover.
+hadisd_version			3.0.1.201904p
+isd_version			---
+isd_date_full			13 February 2019
+isd_date_update			3 May 2019
+license				HadISD is distributed under the Non Commercial Government Licence: http://www.nationalarchives.gov.uk/doc/non-commercial-government-licence/non-commercial-government-licence.htm.  The data are available for non-commercial use with attribution to the data providers. Please cite Dunn et al (2012), Dunn et al (2014), Dunn et al (2016) and Smith et al (2011) and state the version used. This product may contain data which are governed by WMO Policy following WMO Resolution 40 Annex 1 alongside additional data that may have restrictions placed on their commercial use by the data owners. Any redistribution of this product should be accompanied by a similar statement of usage policy.
+processing_level		Quality controlled timeseries at station level
+hadisd_time_coverage_start	1931-01-01T00:00Z
+hadisd_time_coverage_end	2019-05-01T00:00Z
+cdm_data_type			station
+acknowledgement			RJHD was supported by the Joint BEIS/Defra Met Office Hadley Centre Climate Programme (GA01101).

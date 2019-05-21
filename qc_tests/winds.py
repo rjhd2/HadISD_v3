@@ -8,7 +8,7 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 104                                           $:  Revision of last commit
+#$Rev:: 219                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
 #$Date:: 2014-12-01 16:20:58 +0000 (Mon, 01 Dec 2014) $:  Date of last commit
 #************************************************************************
@@ -22,7 +22,7 @@ from scipy.optimize import leastsq
 # RJHD routines
 import qc_utils as utils
 
-DEGREEBINS = 45
+DEGREEBINS = 20
 PROB_THRESHOLD = 0.01
 
 #************************************************************************
@@ -74,12 +74,10 @@ def logical_checks(station, flag_col, logfile, plots = False, diagnostics = Fals
     flag_locs0, = np.where(station.qc_flags[:, flag_col[0]] > 0)    # in case of direction fixes
     flag_locs1, = np.where(station.qc_flags[:, flag_col[1]] > 0)    # in case of direction fixes
 
-    if plots or diagnostics:
-        utils.print_flagged_obs_number(logfile, "Wind Logical Checks", "windspeeds", len(flag_locs0), noWrite=True)
-        utils.print_flagged_obs_number(logfile, "Wind Logical Checks", "winddirs", len(flag_locs1), noWrite=True)
-    else:
-        utils.print_flagged_obs_number(logfile, "Wind Logical Checks", "windspeeds", len(flag_locs0))
-        utils.print_flagged_obs_number(logfile, "Wind Logical Checks", "winddirs", len(flag_locs1))
+
+    utils.print_flagged_obs_number(logfile, "Wind Logical Checks", "windspeeds", len(flag_locs0), noWrite=diagnostics)
+    utils.print_flagged_obs_number(logfile, "Wind Logical Checks", "winddirs", len(flag_locs1), noWrite=diagnostics)
+    
 
     # copy flags into attribute
     station.windspeeds.flags[flag_locs0] = 1
@@ -165,8 +163,6 @@ def plot_wind_rose(speed, direction, title, label = ""):
     if label != "":
         plt.figtext(0.7,0.9, label)
     
-    
-
     plt.show()
 
     return
@@ -211,7 +207,7 @@ def get_histogram_norm(indata, bins):
 
 
 #************************************************************************
-def wind_rose_check(station, flag_col, start, end, logfile, plots = False, diagnostics = False):
+def wind_rose_check(station, flag_col, start, end, logfile, plots = False, diagnostics = False, doMonth = False):
     '''
     Checks for large differences in the year-to-year wind-rose shape.  
     Uses RMSE and fits Gaussian.  Finds gap in distribution to flag beyond
@@ -224,18 +220,25 @@ def wind_rose_check(station, flag_col, start, end, logfile, plots = False, diagn
     :param bool diagnostics: run the diagnostics
 
     '''
+    st_var_spd = getattr(station, "windspeeds")
+    st_var_dir = getattr(station, "winddirs")
 
-    direction = station.winddirs.data
-    speed = station.windspeeds.data
+    direction = st_var_dir.data
+    speed = st_var_spd.data
     flags = station.qc_flags[:,flag_col]
 
     month_ranges = utils.month_starts_in_pairs(start, end)
     month_ranges_years = month_ranges.reshape(-1,12,2)
 
+    filtered_direction = utils.apply_filter_flags(st_var_dir, doMonth = doMonth, start = start, end = end)
+    filtered_speed = utils.apply_filter_flags(st_var_spd, doMonth = doMonth, start = start, end = end)
+
     # histogram of wind directions ( ~ unravelled wind-rose)
-    bw=20
-    bins = range(0,360+bw,bw)
-    full_hist, binEdges = np.histogram(direction, bins = bins, normed = True)
+    dir_bins = range(0,360+DEGREEBINS,DEGREEBINS)
+    full_hist, full_binEdges = np.histogram(filtered_direction.compressed(), bins = dir_bins, normed = True)
+    
+    if diagnostics:
+        print full_hist
 
     # use rmse as this is known (Chi-sq remains just in case)
     rmse, chisq = -np.ma.ones([month_ranges_years.shape[0]]), -np.ma.ones([month_ranges_years.shape[0]])
@@ -245,7 +248,7 @@ def wind_rose_check(station, flag_col, start, end, logfile, plots = False, diagn
 
         if len(direction[year[0][0]:year[-1][0]].compressed()) > 0:
 
-            hist, binEdges = np.histogram(direction[year[0][0]:year[-1][0]],  bins = bins, normed = True)
+            hist, dummy = np.histogram(direction[year[0][0]:year[-1][0]].compressed(),  bins = dir_bins, normed = True)
 
             chisq[y] = np.sum((full_hist-hist)**2/(full_hist+hist))/2.
             rmse[y] = np.sqrt(np.mean((full_hist-hist)**2))
@@ -256,10 +259,10 @@ def wind_rose_check(station, flag_col, start, end, logfile, plots = False, diagn
     # now to bin up the differences and see what the fit is.
     # need to have values spread so can bin!
     if len(np.unique(rmse.compressed())) > 1:
-        binEdges, bincenters = wind_create_bins(rmse)
-        hist, binEdges = np.histogram(rmse,  bins = binEdges)#, density=True)
+        rmse_binEdges, rmse_bincenters = wind_create_bins(rmse)
+        hist, rmse_binEdges = np.histogram(rmse,  bins = rmse_binEdges)#, density=True)
 
-        norm = get_histogram_norm(rmse, binEdges)
+        norm = get_histogram_norm(rmse, rmse_binEdges)
 
         # inputs for fit
         mu = np.mean(rmse)
@@ -272,9 +275,9 @@ def wind_rose_check(station, flag_col, start, end, logfile, plots = False, diagn
     #    plot_gaussian = utils.funcGH(fit[0], bincenters)
 
         fit = stats.rice.fit(rmse.compressed(), loc = 0, scale = np.ma.std(rmse))
-        dist_pdf = stats.rice.pdf(bincenters, fit[:-2], loc=fit[-2], scale=fit[-1]) * norm
+        dist_pdf = stats.rice.pdf(rmse_bincenters, fit[:-2], loc=fit[-2], scale=fit[-1]) * norm
 
-        gaussian = utils.fit_gaussian(bincenters, hist, max(hist), mu = mu, sig = std)
+        gaussian = utils.fit_gaussian(rmse_bincenters, hist, max(hist), mu = mu, sig = std)
 
         # invert Gaussian to find initial threshold, then hunt for first gap beyond
         # threshold = utils.invert_gaussian(PROB_THRESHOLD, gaussian)
@@ -284,30 +287,30 @@ def wind_rose_check(station, flag_col, start, end, logfile, plots = False, diagn
             # then curve has dropped below the threshold, so can find some updated ones.
             threshold = -np.where(dist_pdf[::-1] > PROB_THRESHOLD)[0][0]
         else:
-            threshold = bincenters[-1]
+            threshold = rmse_bincenters[-1]
 
         n = 0
         center = np.argmax(hist)
-        gap = bincenters[-1] # nothing should be beyond this
+        gap = rmse_bincenters[-1] # nothing should be beyond this
 
         while True:
-            if center + n + 1 == len(bincenters): 
+            if center + n + 1 == len(rmse_bincenters): 
                 # gone beyond edge - nothing to flag, so just break
                 break
 
-            if bincenters[center + n] < threshold:
+            if rmse_bincenters[center + n] < threshold:
                 n += 1
                 # continue moving outwards
                 continue
 
             if hist[center + n] == 0:
                 # found one
-                if center + n + 1 == len(bincenters):
+                if center + n + 1 == len(rmse_bincenters):
                     # gone beyond edge - nothing to flag - escape
                     break
                 elif hist[center + n + 1] == 0:
                     # has to be two bins wide?
-                    gap = bincenters[center + n]
+                    gap = rmse_bincenters[center + n]
                     break
             n += 1
 
@@ -319,10 +322,18 @@ def wind_rose_check(station, flag_col, start, end, logfile, plots = False, diagn
                     # only flag where there are observations
                     good, = np.where(np.logical_or(direction.mask[year[0][0]:year[-1][0]] == False, speed.mask[year[0][0]:year[-1][0]] == False))
 
-                    flags[year[0][0]:year[-1][0]][good] = 1
+                    if len(good) > 100:
 
-                    if diagnostics or plots:
-                        print "Flagging {}  RMSE {} > {}".format(y+start.year, rmse[y], gap)
+                        flags[year[0][0]:year[-1][0]][good] = 1
+
+                        if diagnostics or plots:
+                            print "Flagging {}  RMSE {} > {}".format(y+start.year, rmse[y], gap)
+
+                    else:
+                        if diagnostics or plots:
+                            print "{} beyond threshold (RMSE {} > {}) but retained as only {} observations\n".format(y+start.year, rmse[y], gap, len(good))
+                        logfile.write("{} beyond threshold but retained as only {} observations\n".format(y+start.year, len(good)))
+                            
                 elif rmse.mask[y] == False: 
                     if diagnostics or plots:
                         print "{}".format(y+start.year)
@@ -334,13 +345,13 @@ def wind_rose_check(station, flag_col, start, end, logfile, plots = False, diagn
             # plot underlying histogram
             plt.clf()
             plot_hist = np.array([float(x) if x != 0 else 1e-1 for x in hist])
-            plt.step(binEdges[1:], plot_hist, color = 'k')
+            plt.step(rmse_binEdges[1:], plot_hist, color = 'k')
 
             # plot the Rician distribution on top
-            plt.plot(bincenters, dist_pdf, "r-", label = "Rician") 
+            plt.plot(rmse_bincenters, dist_pdf, "r-", label = "Rician") 
 
             # plot the gaussian on top
-            plt.plot(binEdges[1:], utils.gaussian(bincenters, gaussian), color = 'b', ls = ":", label = "Gaussian")
+            plt.plot(rmse_binEdges[1:], utils.gaussian(rmse_bincenters, gaussian), color = 'b', ls = ":", label = "Gaussian")
             plt.yscale("log")
             plt.ylim([0.001, 2*max(plot_hist)])
 
@@ -350,7 +361,7 @@ def wind_rose_check(station, flag_col, start, end, logfile, plots = False, diagn
 
             # plot flagged values in different colour
             if len(rmse[rmse > gap]) > 0:
-                plt.step(binEdges[1:][bincenters >= gap], plot_hist[bincenters >= gap], color = 'r')
+                plt.step(rmse_binEdges[1:][rmse_bincenters >= gap], plot_hist[rmse_bincenters >= gap], color = 'r')
 
             # prettify
             plt.xlabel("RMSE between complete record and each year")
@@ -366,13 +377,12 @@ def wind_rose_check(station, flag_col, start, end, logfile, plots = False, diagn
 
             plt.clf()
 
-            hist, binEdges = np.histogram(direction,  bins = np.arange(0.0,360.+DEGREEBINS,DEGREEBINS), normed = True) 
-            bincenters = (binEdges[:-1] + binEdges[1:])/2.
-            plt.plot(bincenters, hist, "k-", lw = 2)
+            bincenters = (full_binEdges[:-1] + full_binEdges[1:])/2.
+            plt.plot(bincenters, full_hist, "k-", lw = 2)
 
             for y,year in enumerate(month_ranges_years):
                 if len(speed[year[0][0]:year[-1][0]].compressed() > 0):
-                    hist, binEdges = np.histogram(direction[year[0][0]:year[-1][0]],  bins = binEdges, normed = True) 
+                    hist, binEdges = np.histogram(direction[year[0][0]:year[-1][0]].compressed(),  bins = dir_bins, normed = True) 
                     plt.plot(bincenters, hist)
 
             plt.xlabel("Direction (degrees)")
@@ -385,14 +395,15 @@ def wind_rose_check(station, flag_col, start, end, logfile, plots = False, diagn
             for y,year in enumerate(month_ranges_years):
                 if len(speed[year[0][0]:year[-1][0]].compressed() > 0):
                     plot_wind_rose(speed[year[0][0]:year[-1][0]], direction[year[0][0]:year[-1][0]], "{} - {}".format(station.id, start.year + y), label = "RMSE {:6.4f}\nThreshold {:6.4f}".format(rmse[y], gap))
+                else:
+                    print "no data for {}".format(year)
 
     # and apply the flags and output text
 
     flag_locs, = np.where(flags != 0)
-    if plots or diagnostics:
-        utils.print_flagged_obs_number(logfile, "Wind Rose Check", "windspeeds/dirs", len(flag_locs), noWrite=True)
-    else:
-        utils.print_flagged_obs_number(logfile, "Wind Rose Check", "windspeeds/dirs", len(flag_locs))
+
+    utils.print_flagged_obs_number(logfile, "Wind Rose Check", "windspeeds/dirs", len(flag_locs), noWrite=diagnostics)
+    
     
     station.qc_flags[:,flag_col] = flags
 
@@ -404,7 +415,7 @@ def wind_rose_check(station, flag_col, start, end, logfile, plots = False, diagn
 
 
 #************************************************************************
-def wdc(station, flag_col, start, end, logfile, plots = False, diagnostics = False):
+def wdc(station, flag_col, start, end, logfile, plots = False, diagnostics = False, doMonth = False):
     """
     Specific wind speed and direction checks.
     """
@@ -413,7 +424,7 @@ def wdc(station, flag_col, start, end, logfile, plots = False, diagnostics = Fal
 
     logical_checks(station, flag_col[:2], logfile, plots = plots, diagnostics = diagnostics)
 
-    wind_rose_check(station, flag_col[2], start, end, logfile, plots = plots, diagnostics = diagnostics)
+    wind_rose_check(station, flag_col[2], start, end, logfile, plots = plots, diagnostics = diagnostics, doMonth = doMonth)
 
     return
 

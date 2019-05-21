@@ -6,9 +6,9 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 67                                            $:  Revision of last commit
+#$Rev:: 219                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2015-05-01 16:18:52 +0100 (Fri, 01 May 2015) $:  Date of last commit
+#$Date:: 2019-05-20 16:56:47 +0100 (Mon, 20 May 2019) $:  Date of last commit
 #************************************************************************
 import numpy as np
 import scipy as sp
@@ -42,10 +42,7 @@ def unobservable(station, flag_col, logfile, diagnostics = False, plots = False)
         station.qc_flags[bad_locs, flag_col[c]] = 1
 
         flag_locs = np.where(station.qc_flags[:, flag_col[c]] != 0)
-        if plots or diagnostics:
-            utils.print_flagged_obs_number(logfile, "Unobservable cloud", cloud, len(flag_locs[0]), noWrite = True)
-        else:
-            utils.print_flagged_obs_number(logfile, "Unobservable cloud", cloud, len(flag_locs[0]))
+        utils.print_flagged_obs_number(logfile, "Unobservable cloud", cloud, len(flag_locs[0]), noWrite = diagnostics)
 
         # copy flags into attribute
         cloud_obs.flags[flag_locs] = 1
@@ -79,10 +76,7 @@ def total_lt_max(station, flag_col, logfile, diagnostics = False, plots = False)
     station.qc_flags[bad_locs, flag_col] = 1
 
     flag_locs = np.where(station.qc_flags[:, flag_col] != 0)
-    if plots or diagnostics:
-        utils.print_flagged_obs_number(logfile, "Total < Max cloud", "cloud", len(flag_locs[0]), noWrite = True)
-    else:
-        utils.print_flagged_obs_number(logfile, "Total < Max cloud", "cloud", len(flag_locs[0]))
+    utils.print_flagged_obs_number(logfile, "Total < Max cloud", "cloud", len(flag_locs[0]), noWrite = diagnostics)
 
     # copy flags into attribute
     total.flags[flag_locs] = 1
@@ -121,10 +115,7 @@ def low_full(station, flag_col, logfile, diagnostics = False, plots = False):
     station.qc_flags[low_full_locs[0][bad_high[0]], flag_col] = 1
     
     flag_locs = np.where(station.qc_flags[:, flag_col] != 0)
-    if plots or diagnostics:
-        utils.print_flagged_obs_number(logfile, "Low full cloud", "cloud", len(flag_locs[0]), noWrite = True)
-    else:
-        utils.print_flagged_obs_number(logfile, "Low full cloud", "cloud", len(flag_locs[0]))
+    utils.print_flagged_obs_number(logfile, "Low full cloud", "cloud", len(flag_locs[0]), noWrite = diagnostics)
 
     # copy flags into attribute
     mid.flags[flag_locs] = 1
@@ -157,11 +148,7 @@ def mid_full(station, flag_col, logfile, diagnostics = False, plots = False):
     station.qc_flags[mid_full_locs[0][bad_high[0]], flag_col] = 1
     
     flag_locs = np.where(station.qc_flags[:, flag_col] != 0)
-    if plots or diagnostics:
-        utils.print_flagged_obs_number(logfile, "Mid full cloud", "cloud", len(flag_locs[0]), noWrite = True)
-    else:
-        utils.print_flagged_obs_number(logfile, "Mid full cloud", "cloud", len(flag_locs[0]))
-        
+    utils.print_flagged_obs_number(logfile, "Mid full cloud", "cloud", len(flag_locs[0]), noWrite = diagnostics)
 
     # copy flags into attribute
     high.flags[flag_locs] = 1
@@ -216,10 +203,7 @@ def negative_cloud(station, flag_col, logfile, diagnostics = False, plots = Fals
 
 
     flag_locs = np.where(station.qc_flags[:, flag_col] != 0)
-    if plots or diagnostics:
-        utils.print_flagged_obs_number(logfile, "Negative Cloud", "cloud", len(flag_locs[0]), noWrite = True)
-    else:
-        utils.print_flagged_obs_number(logfile, "Negative Cloud", "cloud", len(flag_locs[0]))
+    utils.print_flagged_obs_number(logfile, "Negative Cloud", "cloud", len(flag_locs[0]), noWrite = diagnostics)
 
     return
 

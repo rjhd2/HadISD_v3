@@ -6,9 +6,9 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 62                                            $:  Revision of last commit
+#$Rev:: 219                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2015-04-30 17:03:29 +0100 (Thu, 30 Apr 2015) $:  Date of last commit
+#$Date:: 2019-05-20 16:56:47 +0100 (Mon, 20 May 2019) $:  Date of last commit
 #************************************************************************
 import numpy as np
 import scipy as sp
@@ -74,18 +74,22 @@ def hcc_sss(T, D, month_ranges, start, logfile, plots = False, diagnostics = Fal
 
         data_count = 0.
         sss_count = 0.
-        for t in np.arange(month[0],month[1]):
 
-            data_count += 1
-            
-            if D[t] > T[t]:
-                sss_count += 1
-                
-                flags[t] = 1
-                
-                if plots:
-                    hcc_time_plot(T, D, t-1, t, start)
+        try:
+            for t in np.arange(month[0],month[1]):
 
+                data_count += 1
+
+                if D[t] > T[t]:
+                    sss_count += 1
+
+                    flags[t] = 1
+
+                    if plots:
+                        hcc_time_plot(T, D, t-1, t, start)
+        except IndexError:
+            # no data for that month - incomplete year
+            pass
 
         # test whole month
         # if more than 20% flagged, flag whole month
@@ -97,10 +101,7 @@ def hcc_sss(T, D, month_ranges, start, logfile, plots = False, diagnostics = Fal
                 hcc_time_plot(T, D, month[0], month[1], start)
 
     nflags = len(np.where(flags != 0)[0])
-    if plots or diagnostics:
-        utils.print_flagged_obs_number(logfile, "Supersaturation", "temperature", nflags, noWrite = True)
-    else:
-        utils.print_flagged_obs_number(logfile, "Supersaturation", "temperature", nflags)
+    utils.print_flagged_obs_number(logfile, "Supersaturation", "temperature", nflags, noWrite = diagnostics)
 
     # not yet tested.
     return flags # hcc_sss
@@ -114,7 +115,7 @@ def hcc_dpd(times, T, D, P, C, SX, start, logfile, plots = False, diagnostics = 
     :param array times: timestamps
     :param array T: temperatures
     :param array D: dewpoint temperatures
-    :param array P: precipitation depth
+    :param array P: precipitation depth arrays for 1,3,6,12,24 hourly accumul.
     :param array C: cloud base
     :param array SX: past significant weather
     :param datetime start: DATASTART (for plotting)
@@ -159,13 +160,22 @@ def hcc_dpd(times, T, D, P, C, SX, start, logfile, plots = False, diagnostics = 
                             
                             # check if weather event could explain it.
                             these_sigwx = SX[start_loc : t]
-                            these_P = P[start_loc : t]
+                            these_P = P[:, start_loc : t] # not 1-D anymore
                             these_CB = C[start_loc : t]
-
+                            
                             # use past significant weather, precipitation or low cloud base
                             fog = np.where(np.logical_or.reduce((these_sigwx[good] >= 4, \
-                                               these_P[good] > 0., \
+                                               these_P[0][good] > 0., \
+                                               these_P[1][good] > 0., \
+                                               these_P[2][good] > 0., \
+                                               these_P[3][good] > 0., \
+                                               these_P[4][good] > 0., \
+                                               these_P[5][good] > 0., \
+                                               these_P[6][good] > 0., \
+                                               these_P[7][good] > 0., \
+                                               these_P[8][good] > 0., \
                                                np.logical_and(these_CB[good] > 0., these_CB[good] < 1000.))))
+                                               # these_P[0] to [8] are the 1, 2, 3, 6, 9, 12, 15, 18 and 24 hourly accumulations
 
                             if len(fog[0]) >= 1:
  
@@ -186,10 +196,7 @@ def hcc_dpd(times, T, D, P, C, SX, start, logfile, plots = False, diagnostics = 
                       
 
     nflags = len(np.where(flags != 0)[0])
-    if plots or diagnostics:
-        utils.print_flagged_obs_number(logfile, "Dewpoint Depression", "temperature", nflags, noWrite = True)
-    else:
-        utils.print_flagged_obs_number(logfile, "Dewpoint Depression", "temperature", nflags)
+    utils.print_flagged_obs_number(logfile, "Dewpoint Depression", "temperature", nflags, noWrite = diagnostics)
 
     # checked on 032220 on 19/8/2014 and matches identically
     return flags # hcc_dpd
@@ -270,7 +277,7 @@ def hcc_cutoffs(T, D, month_ranges, logfile, start, plots = False, diagnostics =
                                 return to month loop and move to next month'''
                                 dt_month = start + dt.timedelta(hours = month[0])
                                 if diagnostics:
-                                    print dt.datetime.strftime(dt_month, "%B %Y - ", bin, len(goodD[0]))
+                                    print dt.datetime.strftime(dt_month, "%B %Y"), bin, len(goodD[0])
 
                                 if plots:
                                     # show the histogram
@@ -291,10 +298,7 @@ def hcc_cutoffs(T, D, month_ranges, logfile, start, plots = False, diagnostics =
     # one extra month found - issues with IDL month start/end times.
 
     nflags = len(np.where(flags != 0)[0])
-    if plots or diagnostics:
-        utils.print_flagged_obs_number(logfile, "Dewpoint Cut-off", "temperature", nflags, noWrite = True)
-    else:
-        utils.print_flagged_obs_number(logfile, "Dewpoint Cut-off", "temperature", nflags)
+    utils.print_flagged_obs_number(logfile, "Dewpoint Cut-off", "temperature", nflags, noWrite = diagnostics)
         
     return flags # hcc_cutoffs
                            
@@ -324,12 +328,24 @@ def hcc(station, flag_col, start, end, logfile, diagnostics = False, plots = Fal
     station.qc_flags[:,flag_col[0]] = hcc_sss(temperatures.data, dewpoints.data, month_ranges, start, logfile, plots = plots, diagnostics = diagnostics) 
             
     # Dew point depression  
-    precip = getattr(station, 'precip1_depth')
+    precip1 = getattr(station, 'precip1_depth') 
+    precip2 = getattr(station, 'precip2_depth') 
+    precip3 = getattr(station, 'precip3_depth') 
+    precip6 = getattr(station, 'precip6_depth') 
+    precip9 = getattr(station, 'precip9_depth') 
+    precip12 = getattr(station, 'precip12_depth') 
+    precip15 = getattr(station, 'precip15_depth') 
+    precip18 = getattr(station, 'precip18_depth') 
+    precip24 = getattr(station, 'precip24_depth') 
+
     cloudbase = getattr(station, 'cloud_base')
     past_sigwx = getattr(station, 'past_sigwx1')
     times = station.time.data
+
+    # combine all the precips together
+    precips = np.array([precip1.data, precip2.data, precip3.data, precip6.data, precip9.data, precip12.data, precip15.data, precip18.data, precip24.data])
     
-    station.qc_flags[:,flag_col[1]] = hcc_dpd(times, temperatures.data, dewpoints.data, precip.data, cloudbase.data, past_sigwx.data, start, logfile, plots = plots, diagnostics = diagnostics)    
+    station.qc_flags[:,flag_col[1]] = hcc_dpd(times, temperatures.data, dewpoints.data, precips, cloudbase.data, past_sigwx.data, start, logfile, plots = plots, diagnostics = diagnostics)    
    
     # Dew point cutoffs
     station.qc_flags[:,flag_col[2]] = hcc_cutoffs(temperatures.data, dewpoints.data, month_ranges, logfile, start, plots = plots, diagnostics = diagnostics) 

@@ -8,9 +8,9 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 55                                            $:  Revision of last commit
+#$Rev:: 219                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2015-02-06 16:38:46 +0000 (Fri, 06 Feb 2015) $:  Date of last commit
+#$Date:: 2019-05-20 16:56:47 +0100 (Mon, 20 May 2019) $:  Date of last commit
 #************************************************************************
 import numpy as np
 import scipy as sp
@@ -135,10 +135,8 @@ def krc(station, var_list, flag_col, logfile, diagnostics = False, plots = False
         krc_set_flags(too_low, station.qc_flags, flag_col[v])
         
         flag_locs = np.where(station.qc_flags[:, flag_col[v]] != 0)
-        if plots or diagnostics:
-            utils.print_flagged_obs_number(logfile, "World Record", variable, len(flag_locs[0]), noWrite = True)
-        else:
-            utils.print_flagged_obs_number(logfile, "World Record", variable, len(flag_locs[0]))
+
+        utils.print_flagged_obs_number(logfile, "World Record", variable, len(flag_locs[0]), noWrite = diagnostics)
 
         # copy flags into attribute
         st_var.flags[flag_locs] = 1

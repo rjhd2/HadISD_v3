@@ -21,7 +21,8 @@ import os
 import re
 
 # RJHD utilities
-from station_selection import *
+import qc_utils as utils
+import selection_utils as sel_utils
 from set_paths_and_vars import *
 
 
@@ -88,14 +89,14 @@ def process_EC_file():
 
     # storage files
 
-    SINGLE=INPUT_FILE_LOCS+"Canada_single.dat"
-    ONOFF=INPUT_FILE_LOCS+"Canada_onoff.dat"
-    REMAINING=INPUT_FILE_LOCS+"Canada_rem.dat"
-    HOMOGENISATION=INPUT_FILE_LOCS+"Canada_homogenisation.dat"
-    DATES=INPUT_FILE_LOCS+"Canada_dates.dat"
-    GOODMOVE=INPUT_FILE_LOCS+"Canada_goodmove.dat"
-    QUESTIONABLEMOVE=INPUT_FILE_LOCS+"Canada_questionablemove.dat"
-    OVERLAP=INPUT_FILE_LOCS+"Canada_overlap.dat"
+    SINGLE = os.path.join(INPUT_FILE_LOCS, "Canada_single.dat")
+    ONOFF = os.path.join(INPUT_FILE_LOCS, "Canada_onoff.dat")
+    REMAINING = os.path.join(INPUT_FILE_LOCS, "Canada_rem.dat")
+    HOMOGENISATION = os.path.join(INPUT_FILE_LOCS, "Canada_homogenisation.dat")
+    DATES = os.path.join(INPUT_FILE_LOCS, "Canada_dates.dat")
+    GOODMOVE = os.path.join(INPUT_FILE_LOCS, "Canada_goodmove.dat")
+    QUESTIONABLEMOVE  = os.path.join(INPUT_FILE_LOCS, "Canada_questionablemove.dat")
+    OVERLAP = os.path.join(INPUT_FILE_LOCS, "Canada_overlap.dat")
 
     station_count = np.zeros(8)
 
@@ -120,7 +121,7 @@ def process_EC_file():
     # allow option of no EC file available - as may not be able to share this
     try:
 
-        with open(INPUT_FILE_LOCS+"WMOHistory2014.txt",'r') as infile:
+        with open(os.path.join(INPUT_FILE_LOCS, "WMOHistory2014.txt"),'r') as infile:
 
             for l,line in enumerate(infile):
 
@@ -362,6 +363,8 @@ def process_EC_file():
 
     except IOError:
         print "No EC file available"
+        print os.path.abspath(os.path.join(INPUT_FILE_LOCS, "WMOHistory2014.txt"))
+        return
 
     print "single, onoff, remaining, homog, dates, good move, quest. move, overlap"
     print station_count
@@ -377,7 +380,7 @@ def read_canada_info(filename, DATA_START):
        ids, names, lats, lons, active and date arrays
     '''
 
-    sorted_station_info = np.genfromtxt(INPUT_FILE_LOCS + filename,delimiter=[9,35,5,11,11,11,20],dtype=(str))
+    sorted_station_info = np.genfromtxt(os.path.join(INPUT_FILE_LOCS, filename), delimiter=[9,35,5,11,11,11,20],dtype=(str))
 
     ids = sorted_station_info[:,0].astype(int)
     names = sorted_station_info[:,1].astype(str)
@@ -428,12 +431,12 @@ def process_canadian_stations(all_stations, DATA_START):
 
                 loc = np.where(test_ids == id_to_compare)[0][0]
 
-                test_station = Station(test_ids[loc], test_lats[loc], test_lons[loc], all_stations[cid].elev) # fake the elev
+                test_station = utils.Station(test_ids[loc], test_lats[loc], test_lons[loc], all_stations[cid].elev) # fake the elev
                 test_station.name = test_names[loc].strip()
                 test_station.call = ""
-                probs = do_match(test_station, all_stations[cid])
+                probs = sel_utils.do_match(test_station, all_stations[cid], sel_utils.LATITUDE_THRESHOLD, sel_utils.ELEVATION_THRESHOLD, sel_utils.DISTANCE_THRESHOLD)
 
-                if np.product(probs) > PROB_THRESHOLD:
+                if np.product(probs) > sel_utils.PROB_THRESHOLD:
                     use[c] = 1
                 else:
                     print  all_stations[cid].name, all_stations[cid]
@@ -460,7 +463,7 @@ def process_canadian_stations(all_stations, DATA_START):
     # goodmove
     for category_files in ["Canada_goodmove.dat"]:
 
-        outfilename = INPUT_FILE_LOCS+"Canada_time_ranges.dat"
+        outfilename = os.path.join(INPUT_FILE_LOCS, "Canada_time_ranges.dat")
         try:
             os.remove(outfilename)
         except OSError:
@@ -481,14 +484,14 @@ def process_canadian_stations(all_stations, DATA_START):
                 all_probs=[]
 
                 for loc in locs:
-                    test_station = Station(test_ids[loc], test_lats[loc], test_lons[loc], all_stations[cid].elev) # fake the elev
+                    test_station = utils.Station(test_ids[loc], test_lats[loc], test_lons[loc], all_stations[cid].elev) # fake the elev
                     test_station.name = test_names[loc]
                     test_station.call = ""
-                    probs = do_match(test_station, all_stations[cid])
+                    probs = sel_utils.do_match(test_station, all_stations[cid], sel_utils.LATITUDE_THRESHOLD, sel_utils.ELEVATION_THRESHOLD, sel_utils.DISTANCE_THRESHOLD)
 
                     all_probs += [np.product(probs)]
                 
-                good_locs, = np.where(np.array(all_probs) > PROB_THRESHOLD)
+                good_locs, = np.where(np.array(all_probs) > sel_utils.PROB_THRESHOLD)
 
                 # need to test which range of dates can be taken.
                 start = dt.datetime(DATA_START,1,1,0,0)

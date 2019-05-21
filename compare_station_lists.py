@@ -6,9 +6,9 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 92                                            $:  Revision of last commit
+#$Rev:: 219                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2016-02-08 12:00:09 +0000 (Mon, 08 Feb 2016) $:  Date of last commit
+#$Date:: 2019-05-20 16:56:47 +0100 (Mon, 20 May 2019) $:  Date of last commit
 #************************************************************************
 
 
@@ -36,34 +36,41 @@ def WriteFile(data, outfilename):
     return # WriteFile
 
 #**************************************
-#**************************************
+def compare():
 
-station_list = "candidate_stations.txt"
+    station_list = "candidate_stations.txt"
 
-try:
-    new_station_info = np.genfromtxt(os.path.join(INPUT_FILE_LOCS, station_list), dtype=(str))
-except IOError:
-    print "new station list not found"
-    sys.exit()
+    try:
+        new_station_info = np.genfromtxt(os.path.join(INPUT_FILE_LOCS, station_list), dtype=(str))
+    except IOError:
+        print "new station list not found"
+        sys.exit()
 
-try:
-    old_station_info = np.genfromtxt(os.path.join(OLD_INPUT_FILE_LOCS, station_list), dtype=(str))
-except IOError:
-    print "new station list not found"
-    sys.exit()
-
-
-new_ids = new_station_info[:,0]
-old_ids = old_station_info[:,0]
+    try:
+        old_station_info = np.genfromtxt(os.path.join(OLD_INPUT_FILE_LOCS, station_list), dtype=(str))
+    except IOError:
+        print "new station list not found"
+        sys.exit()
 
 
-in_both = new_ids[np.in1d(new_ids, old_ids)]
-in_new = new_ids[np.in1d(new_ids, old_ids, invert = True)]
-in_old = old_ids[np.in1d(old_ids, new_ids, invert = True)]
+    new_ids = new_station_info[:,0]
+    old_ids = old_station_info[:,0]
 
 
-WriteFile(in_new, "candidate_stations_additions.dat")
-WriteFile(in_old, "candidate_stations_removals.dat")
-WriteFile(in_both, "candidate_stations_continued.dat")
+    in_both = new_ids[np.in1d(new_ids, old_ids)]
+    in_new = new_ids[np.in1d(new_ids, old_ids, invert = True)]
+    in_old = old_ids[np.in1d(old_ids, new_ids, invert = True)]
 
+
+    WriteFile(in_new, "hadisd_station_additions_{}.dat".format(HADISD_VERSION))
+    WriteFile(in_old, "hadisd_station_removals_{}.dat".format(HADISD_VERSION))
+    WriteFile(in_both, "hadisd_station_continued_{}.dat".format(HADISD_VERSION))
+
+    return # compare
+
+#*******************
+if __name__ == "__main__":
+
+    compare()
+    
 #************************************************************************

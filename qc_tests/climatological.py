@@ -7,13 +7,14 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 55                                            $:  Revision of last commit
+#$Rev:: 219                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2015-02-06 16:38:46 +0000 (Fri, 06 Feb 2015) $:  Date of last commit
+#$Date:: 2019-05-20 16:56:47 +0100 (Mon, 20 May 2019) $:  Date of last commit
 #************************************************************************
 import numpy as np
 import scipy as sp
 import datetime as dt
+import copy
 
 # RJHD routines
 import qc_utils as utils
@@ -96,7 +97,7 @@ def coc_low_pass_filter(normed_anomalies, year_ids, monthly_vqvs, years):
     '''
 
     for year in range(years):
-
+        
         if year == 0:
             monthly_range = np.arange(0,3)
             filter_range = np.arange(2,5)
@@ -180,13 +181,21 @@ def coc_find_and_apply_flags(month_ranges, normed_anomalies, flags, year_ids, th
     return flags, gpv, tpv
 
 #************************************************************************
-def coc(station, variable_list, flag_col, start, end, logfile, diagnostics = False, plots = False, idl = False):
+def coc(station, variable_list, flag_col, start, end, logfile, diagnostics = False, plots = False, idl = False, doMonth = False):
+    
     
     for v, variable in enumerate(variable_list):
         
         st_var = getattr(station, variable)
-        all_filtered = utils.apply_filter_flags(st_var)
+        all_filtered = utils.apply_filter_flags(st_var, doMonth = doMonth, start = start, end = end)
         
+        st_var_complete_year = copy.deepcopy(st_var)
+        if doMonth:
+            # restrict the incomplete year if appropriate - keep other flagged obs.
+            full_year_end = utils.get_first_hour_this_year(start, end)
+            st_var_complete_year.data.mask[full_year_end :] = True
+
+
         # is this needed 13th Nov 2014 RJHD
         #reporting_resolution = utils.reporting_accuracy(utils.apply_filter_flags(st_var))
         
@@ -201,6 +210,7 @@ def coc(station, variable_list, flag_col, start, end, logfile, diagnostics = Fal
             # append all e.g. Januaries together
 
             this_month, year_ids, dummy = utils.concatenate_months(month_ranges[:,month,:], st_var.data, hours = True)
+            this_month_complete, dummy, dummy = utils.concatenate_months(month_ranges[:,month,:], st_var_complete_year.data, hours = True)
             this_month_filtered, dummy, dummy = utils.concatenate_months(month_ranges[:,month,:], all_filtered, hours = True)
 
             # if fixed climatology period, sort this here
@@ -209,13 +219,16 @@ def coc(station, variable_list, flag_col, start, end, logfile, diagnostics = Fal
             this_month = np.ma.array(this_month)
             this_month = this_month.reshape(-1,24)
 
+            this_month_complete = np.ma.array(this_month_complete)
+            this_month_complete = this_month_complete.reshape(-1,24)
+
             this_month_filtered = np.ma.array(this_month_filtered)
             this_month_filtered = this_month_filtered.reshape(-1,24)
 
             # get hourly climatology for each month
             for hour in range(24):
                 
-                this_hour = this_month[:,hour]
+                this_hour = this_month_complete[:,hour]
 
                 # need to have data if this is going to work!
                 if len(this_hour.compressed()) > 0:
@@ -229,24 +242,34 @@ def coc(station, variable_list, flag_col, start, end, logfile, diagnostics = Fal
                         this_hour = utils.winsorize(this_hour.compressed(), 0.05, idl = idl)
                         hourly_climatologies[hour] = np.ma.mean(this_hour)
 
+            if diagnostics:
+                print "hourly clims", hourly_climatologies
 
-
-            if len(this_month.compressed()) > 0:
+            if len(this_month.compressed()) > 0 and len(this_month_complete.compressed()) > 0:
                 # can get stations with few obs in a particular variable.
+                # or, with monthly running, if this variable has just started reporting
+                #  only get data from the recent month, but not from previous year.
 
                 # anomalise each hour over month appropriately
 
                 anomalies = this_month - np.tile(hourly_climatologies, (this_month.shape[0],1))
+                anomalies_complete = this_month_complete - np.tile(hourly_climatologies, (this_month_complete.shape[0],1))
                 anomalies_filtered = this_month_filtered - np.tile(hourly_climatologies, (this_month_filtered.shape[0],1))
 
-                if len(anomalies.compressed()) >= 10:
-                    iqr = utils.IQR(anomalies.compressed().reshape(-1))/2.  # to match IDL
+                if len(anomalies_complete.compressed()) >= 10:
+                    iqr = utils.IQR(anomalies_complete.compressed().reshape(-1))/2.  # to match IDL
                     if iqr < 1.5: iqr = 1.5
                 else:
                     iqr = st_var.mdi
 
                 normed_anomalies = anomalies / iqr
+                normed_anomalies_complete = anomalies_complete / iqr
                 normed_anomalies_filtered = anomalies_filtered / iqr
+
+                if diagnostics:
+                    print np.ma.mean(this_month), np.ma.mean(this_month_complete), np.ma.mean(this_month_filtered)
+                    print np.ma.mean(anomalies), np.ma.mean(anomalies_complete), np.ma.mean(anomalies_filtered)
+                    print np.ma.mean(normed_anomalies), np.ma.mean(normed_anomalies_complete), np.ma.mean(normed_anomalies_filtered)
 
 
                 # get average anomaly for year
@@ -266,28 +289,40 @@ def coc(station, variable_list, flag_col, start, end, logfile, diagnostics = Fal
                     else:
                         monthly_vqvs.mask[year] = True
 
+                if diagnostics:
+                    print "monthly vqvs", monthly_vqvs
 
                 # low pass filter
                 normed_anomalies = coc_low_pass_filter(normed_anomalies, year_ids, monthly_vqvs, month_ranges.shape[0])
 
+                if doMonth:
+                    # run low pass filter, ignoring the final incomplete year.
+                    not_final_year_locs, = np.where(year_ids != year_ids[-1])
+
+                    normed_anomalies_complete[not_final_year_locs] = coc_low_pass_filter(normed_anomalies_complete[not_final_year_locs], year_ids[not_final_year_locs], monthly_vqvs[:-1], month_ranges.shape[0]-1)
+                else:
+                    normed_anomalies_complete = coc_low_pass_filter(normed_anomalies_complete, year_ids, monthly_vqvs, month_ranges.shape[0])
+
+
                 # copy from distributional_gap.py - refactor!
-                # get the threshold value
-                bins, bincenters = utils.create_bins(normed_anomalies, 1.)
+                # get the threshold value using complete values
+                bins, bincenters = utils.create_bins(normed_anomalies_complete, 1.)
+                
+                hist, binEdges = np.histogram(normed_anomalies_complete.compressed(), bins = bins)
 
-                hist, binEdges = np.histogram(normed_anomalies, bins = bins)
-
-                gaussian = utils.fit_gaussian(bincenters, hist, max(hist), mu=np.mean(normed_anomalies), sig = np.std(normed_anomalies))
+                gaussian = utils.fit_gaussian(bincenters, hist, max(hist), mu=np.ma.mean(normed_anomalies_complete), sig = np.ma.std(normed_anomalies_complete))
                 minimum_threshold = round(1. + utils.invert_gaussian(FREQUENCY_THRESHOLD, gaussian))
 
                 if diagnostics:
                     print iqr, minimum_threshold, 1. + utils.invert_gaussian(FREQUENCY_THRESHOLD, gaussian)
                     print gaussian
                     print hist
+                    print bins
 
                 if plots:
                     coc_set_up_plot(bincenters, hist, gaussian, variable, threshold = minimum_threshold, sub_par = "observations")
 
-
+                # apply to uncomplete values
                 uppercount = len(np.where(normed_anomalies > minimum_threshold)[0])
                 lowercount = len(np.where(normed_anomalies < -minimum_threshold)[0])
 
@@ -334,22 +369,14 @@ def coc(station, variable_list, flag_col, start, end, logfile, diagnostics = Fal
         # copy flags into attribute
         st_var.flags[flag_locs] = 1
 
-
-        if plots or diagnostics:
-            utils.print_flagged_obs_number(logfile, "Climatological", variable, len(flag_locs[0]), noWrite = True)
-            print "where\n"
-            nflags = len(np.where(station.qc_flags[:, flag_col[v]] == 1)[0])
-            utils.print_flagged_obs_number(logfile, "  Firm Clim", variable, nflags, noWrite = True)
-            nflags = len(np.where(station.qc_flags[:, flag_col[v]] == 2)[0])
-            utils.print_flagged_obs_number(logfile, "  Tentative Clim", variable, nflags, noWrite = True)
-        else:
-            utils.print_flagged_obs_number(logfile, "Climatological", variable, len(flag_locs[0]))
-            logfile.write("where\n")
-            nflags = len(np.where(station.qc_flags[:, flag_col[v]] == 1)[0])
-            utils.print_flagged_obs_number(logfile, "  Firm Clim", variable, nflags)
-            nflags = len(np.where(station.qc_flags[:, flag_col[v]] == 2)[0])
-            utils.print_flagged_obs_number(logfile, "  Tentative Clim", variable, nflags)
-
+        utils.print_flagged_obs_number(logfile, "Climatological", variable, len(flag_locs[0]), noWrite = diagnostics)
+        if diagnostics: print "where\n"
+        logfile.write("where\n")
+        nflags = len(np.where(station.qc_flags[:, flag_col[v]] == 1)[0])
+        utils.print_flagged_obs_number(logfile, "  Firm Clim", variable, nflags, noWrite = diagnostics)
+        nflags = len(np.where(station.qc_flags[:, flag_col[v]] == 2)[0])
+        utils.print_flagged_obs_number(logfile, "  Tentative Clim", variable, nflags, noWrite = diagnostics)
+ 
         # firm flags match 030220
     station = utils.append_history(station, "Climatological Check")  
                      

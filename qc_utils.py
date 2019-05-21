@@ -6,14 +6,15 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 117                                           $:  Revision of last commit
+#$Rev:: 219                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2017-01-30 15:33:46 +0000 (Mon, 30 Jan 2017) $:  Date of last commit
+#$Date:: 2019-05-20 16:56:47 +0100 (Mon, 20 May 2019) $:  Date of last commit
 #************************************************************************
 
 import numpy as np
 import datetime as dt
 from scipy.optimize import leastsq,fsolve
+import copy
 
 #*********************************************
 class MetVar(object):
@@ -167,10 +168,14 @@ def create_fulltimes(station, var_list, start, end, opt_var_list = [], do_input_
     return match
 
 #*********************************************
-def month_starts(start, end):
+def month_starts(start, raw_end):
     '''
     Returns locations of month starts (using hours as index)
     '''
+    if raw_end.month != 1:
+        end = dt.datetime(raw_end.year + 1, 1, 1, 0, 0)
+    else:
+        end = raw_end
     
     month_locs = []
     
@@ -180,7 +185,7 @@ def month_starts(start, end):
         
         difference = date - start
         
-        month_locs += [difference.days*24]
+        month_locs += [difference.days * 24]
     
         # increment counter
         if date.month < 12:
@@ -191,13 +196,19 @@ def month_starts(start, end):
     return month_locs # month_starts
 
 #*********************************************
-def month_starts_in_pairs(start, end):
+def month_starts_in_pairs(start, raw_end):
     '''
     Create array of month start/end pairs
     :param datetime start: start of data 
-    :param datetime end: end of data
+    :param datetime raw_end: end of data
     :returns: month_ranges: Nx2 array    
     '''
+
+    if raw_end.month != 1:
+        end = dt.datetime(raw_end.year + 1, 1, 1, 0, 0)
+    else:
+        end = raw_end
+
     # set up the arrays of month start locations
     m_starts = month_starts(start, end)
     
@@ -207,9 +218,9 @@ def month_starts_in_pairs(start, end):
 
     difference = end - start
 
-    month_ranges[-1,:] = [m_starts[-1], difference.days * 24.]
+    month_ranges[-1,:] = [m_starts[-1], difference.days * 24]
     
-    return month_ranges # month_starts_in_pairs
+    return month_ranges.astype(int) # month_starts_in_pairs
 
 #*********************************************
 def reporting_accuracy(indata, winddir = False, plots = False):
@@ -361,12 +372,20 @@ def fit_gaussian(x,y,norm, mu=False, sig=False):
     return fit # fit_gaussian
 
 #*********************************************
-def apply_filter_flags(st_var):
+def apply_filter_flags(st_var, doMonth = False, start = 0, end = 0):
     '''
     Return the data masked by the flags
     '''
+    
+    new_var = copy.deepcopy(st_var)
 
-    return  np.ma.masked_where(st_var.flags == 1, st_var.data) # apply_filter_flags
+    if doMonth:
+        filtered = np.ma.masked_where(new_var.flags == 1, new_var.data)
+        full_year_end = get_first_hour_this_year(start, end)
+        filtered.mask[full_year_end :] = True
+        return filtered
+    else:
+        return np.ma.masked_where(new_var.flags == 1, new_var.data) # apply_filter_flags
 
 #*********************************************
 def apply_flags_to_mask(station, variable):
@@ -385,12 +404,16 @@ def apply_flags_to_mask(station, variable):
 def IQR(data, percentile = 0.25):
     ''' Calculate the IQR of the data '''
     # perhaps combine with percentile - but this may be more efficient
-    sorted_data = sorted(data)
+    try:
+        sorted_data = sorted(data.compressed())
+    except AttributeError:
+        # if not masked array
+        sorted_data = sorted(data)
     
     n_data = len(sorted_data)
 
     quartile = int(round(percentile * n_data))
-                       
+       
     return sorted_data[n_data - quartile] - sorted_data[quartile] # IQR
     
 #*********************************************
@@ -468,8 +491,8 @@ def print_flagged_obs_number(logfile, test, variable, nflags, noWrite=False):
 
     if noWrite:
         print "{:50s} {:20s}{:5d}\n".format(test+" Check Flags :", variable.capitalize()+" :", nflags)
-    else:
-        logfile.write("{:50s} {:20s}{:5d}\n".format(test+" Check Flags :", variable.capitalize()+" :", nflags))
+
+    logfile.write("{:50s} {:20s}{:5d}\n".format(test+" Check Flags :", variable.capitalize()+" :", nflags))
     return # print_flagged_obs_number
 
 #************************************************************************
@@ -907,8 +930,12 @@ def get_critical_values(indata, binmin = 0, binwidth = 1, plots = False, diagnos
         else:
             threshold = max(indata) + binwidth
 
-    else:
+    elif len(set(indata)) == 1:
         threshold = max(indata) + binwidth
+
+    else:
+        # if no data, return 0+binwidth as the threshold to ensure a positive value
+        threshold = np.copy(binwidth)
  
     return threshold # get_critical_values
 
@@ -937,13 +964,12 @@ def apply_flags_all_variables(station, all_variables, flag_col, logfile, test_na
    
         if plots or diagnostics:
             print "Applying {} flags to {}".format(test_name, var)
-        else:
-            logfile.write("Applying {} flags to {}\n".format(test_name, var))
+        logfile.write("Applying {} flags to {}\n".format(test_name, var))
 
     return # apply_flags_all_variables
 
 #************************************************************************
-def apply_windspeed_flags_to_winddir(station, diagnostics = False):
+def apply_flags_from_A_to_B(station, source, destination, diagnostics = False):
     """
     Applying windspeed flags to wind directions synergistically
     Called after every test which assess windspeeds
@@ -953,19 +979,20 @@ def apply_windspeed_flags_to_winddir(station, diagnostics = False):
     """
 
 
-    windspeeds = getattr(station, "windspeeds")
-    winddirs = getattr(station, "winddirs")
-    
-    winddirs.flags = windspeeds.flags
+    source_var = getattr(station, source)
+    dest_var = getattr(station, destination)
+   
+    # find locations where source has flags which destination hasn't
+    locs, = np.where(np.logical_and(source_var.flags != dest_var.flags, source_var.flags == 1))
+
+    dest_var.flags[locs] = 1
 
     if diagnostics:
+        print "{} flags copied from {} to {}".format(len(locs), source, destination)
 
-        old_flags, = np.where(winddirs.flags != 0)
-        new_flags, = np.where(windspeeds.flags != 0)
+    return # apply_flags_from_A_to_B
 
-        print "{} flags copied from windspeeds to winddirs".format(len(new_flags) - len(old_flags))
 
-    return # apply_windspeed_flags_to_winddir
 
 #************************************************************************
 def nearly_equal(a,b,sig_fig=5):
@@ -984,3 +1011,18 @@ http://stackoverflow.com/questions/558216/function-to-determine-if-two-numbers-a
     return ( a==b or 
              int(a*10**sig_fig) == int(b*10**sig_fig)
            ) # nearly_equal
+
+#************************************************************************
+def get_first_hour_this_year(start, end):
+    """
+    Return the index for the first hour in the current incomplete year
+    
+    Allows truncation of filtered data for distributions so that it does
+    not contain months from the incomplete year (and hence allows monthly
+    updating of HadISD).
+
+    """    
+    time_diff = dt.datetime(end.year,1,1,0,0) - start
+
+    return time_diff.days*24 # get_first_hour_this_year
+

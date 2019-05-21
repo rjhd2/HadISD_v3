@@ -6,14 +6,15 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 55                                            $:  Revision of last commit
+#$Rev:: 219                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2015-02-06 16:38:46 +0000 (Fri, 06 Feb 2015) $:  Date of last commit
+#$Date:: 2019-05-20 16:56:47 +0100 (Mon, 20 May 2019) $:  Date of last commit
 #************************************************************************
 import numpy as np
 import math
 import scipy as sp
 import datetime as dt
+import copy
 
 # RJHD routines
 import qc_utils as utils
@@ -57,7 +58,7 @@ def sc_diagnostics_and_plots(times, indata, start, end, datastart, title, plots 
 
 
 #************************************************************************
-def sc(station, variable_list, flag_col, start, end, logfile, diagnostics = False, plots = False, second = False):
+def sc(station, variable_list, flag_col, start, end, logfile, diagnostics = False, plots = False, doMonth = False):
     '''
     Spike Check, looks for spikes up to 3 observations long, using thresholds
     calculated from the data itself.
@@ -69,7 +70,7 @@ def sc(station, variable_list, flag_col, start, end, logfile, diagnostics = Fals
     :param datetime end: dataset end time
     :param file logfile: logfile to store outputs
     :param bool plots: do plots
-    :param bool second: run for second time
+    :param bool doMonth: account for incomplete months
 
     :returns:    
     '''
@@ -79,41 +80,38 @@ def sc(station, variable_list, flag_col, start, end, logfile, diagnostics = Fals
 
         flags = station.qc_flags[:, flag_col[v]]
 
-        prev_flag_number = 0
-        if second:
-            # count currently existing flags:
-            prev_flag_number = len(flags[flags != 0])
-    
         st_var = getattr(station, variable)
     
-        all_filtered = utils.apply_filter_flags(st_var)
+        # if incomplete year, mask all obs for the incomplete bit
+        all_filtered = utils.apply_filter_flags(st_var, doMonth = doMonth, start = start, end = end)
       
         reporting_resolution = utils.reporting_accuracy(utils.apply_filter_flags(st_var))
         # to match IDL system - should never be called as would mean no data
-        if reporting_resolution == -1: reporting_resolution = 1 
+        if reporting_resolution == -1:
+            reporting_resolution = 1 
 
         month_ranges = utils.month_starts_in_pairs(start, end)
         month_ranges = month_ranges.reshape(-1,12,2)
         
-        good = np.where(all_filtered.mask == False)
+        good, = np.where(all_filtered.mask == False)
         
-        full_time_diffs = np.ma.zeros(len(all_filtered))
-        full_time_diffs.mask = all_filtered.mask
-        full_time_diffs[good] = station.time.data[good][1:] - station.time.data[good][:-1]
+        full_time_diffs = np.ma.zeros(len(all_filtered), dtype = int)
+        full_time_diffs.mask = copy.deepcopy(all_filtered.mask[:])
+        full_time_diffs[good[:-1]] = station.time.data[good[1:]] - station.time.data[good[:-1]]
         
         # develop critical values using clean values
         # NOTE 4/7/14 - make sure that Missing and Flagged values treated appropriately
         print "sort the differencing if values were flagged rather than missing"
 
         full_filtered_diffs = np.ma.zeros(len(all_filtered))
-        full_filtered_diffs.mask = all_filtered.mask
-        full_filtered_diffs[good] = all_filtered.compressed()[1:] - all_filtered.compressed()[:-1]
+        full_filtered_diffs.mask = copy.deepcopy(all_filtered.mask[:])
+        full_filtered_diffs[good[:-1]] = all_filtered.compressed()[1:] - all_filtered.compressed()[:-1]
         
         # test all values
-        good_to_uncompress = np.where(st_var.data.mask == False)
+        good_to_uncompress, = np.where(st_var.data.mask == False)
         full_value_diffs = np.ma.zeros(len(st_var.data))
-        full_value_diffs.mask = st_var.data.mask
-        full_value_diffs[good_to_uncompress] = st_var.data.compressed()[1:] - st_var.data.compressed()[:-1]
+        full_value_diffs.mask = copy.deepcopy(st_var.data.mask[:])
+        full_value_diffs[good_to_uncompress[:-1]] = st_var.data.compressed()[1:] - st_var.data.compressed()[:-1]
 
         # convert to compressed time to match IDL
         value_diffs = full_value_diffs.compressed()
@@ -126,7 +124,7 @@ def sc(station, variable_list, flag_col, start, end, logfile, diagnostics = Fals
         critical_values.fill(st_var.mdi)
         
         # link observation to calendar month
-        month_locs = np.zeros(full_time_diffs.shape)
+        month_locs = np.zeros(full_time_diffs.shape, dtype = int)
                 
         for month in range(12):
             for year in range(month_ranges.shape[0]):
@@ -197,14 +195,15 @@ def sc(station, variable_list, flag_col, start, end, logfile, diagnostics = Fals
                     critical_values[0,month] = 0.66 * critical_values[1,month]
         
         if diagnostics:
+            print "critical values"
             print critical_values[0,:]
 
 
         # get time differences for unfiltered data
 
-        full_time_diffs = np.ma.zeros(len(st_var.data))
-        full_time_diffs.mask = st_var.data.mask
-        full_time_diffs[good_to_uncompress] = station.time.data[good_to_uncompress][1:] - station.time.data[good_to_uncompress][:-1]
+        full_time_diffs = np.ma.zeros(len(st_var.data), dtype = int)
+        full_time_diffs.mask = copy.deepcopy(st_var.data.mask[:])
+        full_time_diffs[good_to_uncompress[:-1]] = station.time.data[good_to_uncompress[1:]] - station.time.data[good_to_uncompress[:-1]]
         time_diffs = full_time_diffs.compressed()
 
         # go through each difference, identify which month it is in if passes spike thresholds 
@@ -214,13 +213,13 @@ def sc(station, variable_list, flag_col, start, end, logfile, diagnostics = Fals
             if (np.abs(time_diffs[t - 1]) > 240) and (np.abs(time_diffs[t]) < 3):
                 # 10 days before but short gap thereafter
                 
-                next_values = st_var.data[good_to_uncompress[0][t + 1:]] 
+                next_values = st_var.data[good_to_uncompress[t + 1:]]
                 good, = np.where(next_values.mask == False)
         
                 next_median = np.ma.median(next_values[good[:10]])
         
                 next_diff = np.abs(value_diffs[t]) # out of spike
-                median_diff = np.abs(next_median - st_var.data[good_to_uncompress[0][t]]) # are the remaining onees
+                median_diff = np.abs(next_median - st_var.data[good_to_uncompress[t]]) # are the remaining onees
                        
                 if (critical_values[time_diffs[t] - 1, month_locs[t]] != st_var.mdi):
                     
@@ -230,19 +229,19 @@ def sc(station, variable_list, flag_col, start, end, logfile, diagnostics = Fals
                     
                         flags[t] = 1
                         if plots or diagnostics:
-                            sc_diagnostics_and_plots(station.time.data, st_var.data, good_to_uncompress[0][t], good_to_uncompress[0][t+1], start, variable, plots = plots)
+                            sc_diagnostics_and_plots(station.time.data, st_var.data, good_to_uncompress[t], good_to_uncompress[t+1], start, variable, plots = plots)
                         
                         
             elif (np.abs(time_diffs[t - 1]) < 3) and (np.abs(time_diffs[t]) > 240):
                 # 10 days after but short gap before
                 
-                prev_values = st_var.data[good_to_uncompress[0][:t - 1]]
+                prev_values = st_var.data[good_to_uncompress[:t - 1]]
                 good, = np.where(prev_values.mask == False)
         
                 prev_median = np.ma.median(prev_values[good[-10:]])
         
                 prev_diff = np.abs(value_diffs[t - 1])
-                median_diff = np.abs(prev_median - st_var.data[good_to_uncompress[0][t]])
+                median_diff = np.abs(prev_median - st_var.data[good_to_uncompress[t]])
         
                 if (critical_values[time_diffs[t - 1] - 1, month_locs[t]] != st_var.mdi):
                     
@@ -252,7 +251,7 @@ def sc(station, variable_list, flag_col, start, end, logfile, diagnostics = Fals
                     
                         flags[t] = 1
                         if plots or diagnostics:
-                            sc_diagnostics_and_plots(station.time.data, st_var.data, good_to_uncompress[0][t], good_to_uncompress[0][t+1], start, variable, plots = plots)
+                            sc_diagnostics_and_plots(station.time.data, st_var.data, good_to_uncompress[t], good_to_uncompress[t+1], start, variable, plots = plots)
                         
         
         
@@ -308,17 +307,15 @@ def sc(station, variable_list, flag_col, start, end, logfile, diagnostics = Fals
 
                                                         if plots or diagnostics:
                                                             
-                                                            sc_diagnostics_and_plots(station.time.data, st_var.data, good_to_uncompress[0][t-spk_len+1], good_to_uncompress[0][t+1], start, variable, plots = plots)
+                                                            sc_diagnostics_and_plots(station.time.data, st_var.data, good_to_uncompress[t-spk_len+1], good_to_uncompress[t+1], start, variable, plots = plots)
                                                            
 
         station.qc_flags[good_to_uncompress, flag_col[v]] = flags
                                     
-        flag_locs = np.where(station.qc_flags[:, flag_col[v]] != 0)
+        flag_locs, = np.where(station.qc_flags[:, flag_col[v]] != 0)
 
-        if plots or diagnostics:
-            utils.print_flagged_obs_number(logfile, "Spike", variable, len(flag_locs[0]) - prev_flag_number, noWrite = True) # additional flags
-        else:
-            utils.print_flagged_obs_number(logfile, "Spike", variable, len(flag_locs[0]) - prev_flag_number) # additional flags
+        utils.print_flagged_obs_number(logfile, "Spike", variable, len(flag_locs), noWrite = diagnostics) # additional flags
+
 
         # copy flags into attribute
         st_var.flags[flag_locs] = 1

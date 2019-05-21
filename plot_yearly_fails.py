@@ -6,9 +6,9 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 116                                           $:  Revision of last commit
+#$Rev:: 219                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2017-01-30 15:24:24 +0000 (Mon, 30 Jan 2017) $:  Date of last commit
+#$Date:: 2019-05-20 16:56:47 +0100 (Mon, 20 May 2019) $:  Date of last commit
 #************************************************************************
 
 import numpy as np
@@ -38,12 +38,11 @@ class QCtest(object):
 
 
 #*******************************************************
-station_list = "candidate_stations.txt"
 
 # overwrite the global list
 process_vars = ["temperatures","dewpoints","slp","windspeeds","total_cloud_cover"]
 
-input_id = "941020-99999"
+input_id = "010010-99999"
 
 # set up plot objects
 
@@ -165,7 +164,7 @@ tests = {"temperatures" : [0,1,4,5,8,12,16,20,24,27,41,44,54,58],
          'total_cloud_cover':range(33,41)}
 
 try:
-    station_info = np.genfromtxt(os.path.join(INPUT_FILE_LOCS, station_list), dtype=(str))
+    station_info = np.genfromtxt(os.path.join(INPUT_FILE_LOCS, STATION_LIST), dtype=(str))
 except IOError:
     print "station list not found"
     sys.exit()
@@ -182,7 +181,7 @@ else:
     sys.exit(0)
 
 # read attributes and qc_flags
-ncdfp.read(os.path.join(NETCDF_DATA_LOCS, station.id + "_external.nc"), station, process_vars, [])
+ncdfp.read(os.path.join(NETCDF_DATA_LOCS, "hadisd.{}_19310101-{}_{}_external.nc".format(LONG_VERSION, END_TIME, station.id)), station, process_vars, [])
 
 match_to_compress = utils.create_fulltimes(station, process_vars, DATASTART, DATAEND, [])
 
@@ -199,11 +198,11 @@ for year in range(DATASTART.year, DATAEND.year):
     if year != DATAEND.year - 1:
         plot_range = (month_start_locs[year_loc,0], month_start_locs[year_loc+1,0])
     else:
-        plot_range = (month_start_locs[year_loc,0], -1) # misses last hour
+        plot_range = (month_start_locs[year_loc,0], [-1]) # misses last hour
 
-    plot_times = utils.times_hours_to_datetime(station.time.data[plot_range[0]:plot_range[1]], DATASTART)
+    plot_times = utils.times_hours_to_datetime(station.time.data[plot_range[0][0]:plot_range[1][0]], DATASTART)
 
-    plot_qc_flags = station.qc_flags[plot_range[0]:plot_range[1],:]
+    plot_qc_flags = station.qc_flags[plot_range[0][0]:plot_range[1][0],:]
 
 
     fig, axes = plt.subplots(5, figsize = (12, 12), sharex=True, dpi = 100)
@@ -213,7 +212,7 @@ for year in range(DATASTART.year, DATAEND.year):
         ax = axes[v]
 
         plot_var = getattr(station, var)
-        plot_data = plot_var.data[plot_range[0]:plot_range[1]]
+        plot_data = plot_var.data[plot_range[0][0]:plot_range[1][0]]
 
         # dummy points
         if len(plot_data.compressed()) > 0:
@@ -222,7 +221,7 @@ for year in range(DATASTART.year, DATAEND.year):
 
             ax.plot(plot_times, plot_data, 'k.', zorder=3, alpha = 0.5)  # 'k,' gives pixel marker
             # dummy points
-            ax.plot([dt.datetime(year,1,1,0,0),dt.datetime(year,12,31,23,0)], plot_data.compressed()[:2], 'w.', zorder=0, alpha = 0.5)
+            ax.plot([dt.datetime(year,1,1,0,0),dt.datetime(year,12,31,23,0)], [plot_data.compressed()[0],plot_data.compressed()[0]], 'w.', zorder=0, alpha = 0.5)
 
             ymin, ymax = ax.get_ylim()
             if var == "windspeeds":

@@ -1,0 +1,151 @@
+
+ACL = all Cloud fails
+ALL_SLP = all SLP fails
+ALL_T = all T fails
+ALL_Td = all Td fails
+BBB = month cleared Wd
+BMB = month cleared cloud base        
+CMB = month cleared total cloud       
+CST = cloud small total 	      
+CUOH = high cloud unobservable  	     
+CUOL = low cloud unobservable	     
+CUOM = mid cloud unobservable	     
+CUOT = tot cloud unobservable	     
+DCF = dew point cutoffs 	      
+DCM = Td Clim
+DDS = Td day strings  
+DFV = Td frequent values check
+DGP = Td gap
+DMB = month cleared dewpoint	      
+DNL = diurnal		      
+DOT = Td Outlier      
+DPD = dew point depression	      
+DPS = SLP day strings 
+DRS = Wd day strings 
+DRC = Td records
+DSP = Td Spike
+DSS = Td straight strings     
+DTS = T day strings   
+DUP = duplicates	      
+DVR = variance check dewpoints        
+DWS = W day strings   
+FLW = full low cloud		      
+FMC = full mid cloud		      
+HDS = Td hour strings	 
+HMB = month cleared high cloud        
+HPS = SLP hour strings     
+HRS = Wd hour strings     
+HTS = T hour strings	
+HWS = W hour strings	
+LMB = month cleared low cloud	      
+MMB = month cleared middle cloud      
+NGC = Negative cloud value	      
+OCD = odd_cluster dewpoints	      
+OCS = odd_cluster slp		      
+OCT = odd_cluster temperatures        
+OCS = odd_cluster wind		      
+PCM = SLP Clim
+PRC = SLP record  		      
+PSP = SLP Spike 	      
+PSS = SLP straight strings    
+RSS = Wd straight strings    
+SFV = SLP frequent values check
+SGP = SLP gap 
+SMB = month cleared slp 	      
+SOT = SLP Outlier     
+SSS = supersaturation		      
+STR_D = All Td strings
+STR_S = All SLP strings
+STR_T = All T strings
+STR_W = All W strings
+SVR = variance check slp	      
+TCM = T Clim
+TFV = T frequent values check
+TGP = T gap
+TMB = month cleared temperature       
+TOT = T Outlier       
+TRC = T records
+TSP = T Spike
+TSS = T straight string
+TVR = variance check temperatures 
+WDL = Wd Logic    
+WMB = month cleared windspeed	      
+WRC = W records
+WSL = W Logic
+WRS = W wind rose
+WSS = W straight strings      
+WSP = W spike
+WVR = W variance
+
+
+Flag Column
+
+0	DUP
+1	FVC - TFV
+2	FVC - DFV
+3	FVC - SFV
+4	DNL
+5	GAP - TGP
+6	GAP - DGP
+7	GAP - SGP
+8	REC - TRC
+9	REC - DRC
+10	REC - WRC
+11	REC - SRC
+12	STS - TSS
+13	STS - DSS
+14	STS - WSS
+15	STS - SSS
+16	HST - HTS
+17	HST - HDS
+18	HST - HWS
+19	HST - HPS
+20	DST - DTS
+21	DST - DDS
+22	DST - DWS
+23	DST - DPS
+24	CLM - TCM
+25	CLM - DCM
+26	CLM - SCM - not used
+27	SPK - TSP
+28	SPK - DSP
+29	SPK - PSP
+30	SSS
+31	DPD
+32	DCF
+33	CUO - CUOT
+34	CUO - CUOL
+35	CUO - CUOM
+36	CUO - CUOH
+37	CST
+38	FLW
+39	FMC
+40	NGC
+41 	OUT - TOT
+42	OUT - DOT
+43	OUT - SOT
+44	TMB
+45	DMB
+46	SMB
+47	WMB
+48	RMB
+49	CMB
+50	LMB
+51	MMB
+52	HMB
+53	BMB
+54	OCT
+55	OCD
+56	OCW
+57	OCS
+58	TVR
+59	DVR
+60	SVR
+61	WVR
+62	WSL
+63	WDL
+64	WRS
+65	WSP
+66	RSS
+67	HRS
+68	DRS

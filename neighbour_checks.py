@@ -6,10 +6,30 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 117                                           $:  Revision of last commit
+#$Rev:: 219                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2017-01-30 15:33:46 +0000 (Mon, 30 Jan 2017) $:  Date of last commit
+#$Date:: 2019-05-20 16:56:47 +0100 (Mon, 20 May 2019) $:  Date of last commit
 #************************************************************************
+'''
+neighbour_checks.py invoked by typing::
+
+  python2.7 neighbour_checks.py --restart_id 000000-99999 --end_id 999999-99999 --masking --do_zip  [--plots] [--diagnostics]
+
+Input arguments:
+
+--restart_id        First station to process
+
+--end_id            Last station to process
+
+--masking           Apply the results of the QC tests and move these observations to new fields
+
+--plots             [False] Create plots into the image directory
+
+--diagnostics       [False] Verbose output
+'''
+
+
+
 
 
 import numpy as np
@@ -41,11 +61,19 @@ FLAG_COL_DICT = { "temperatures":np.array([0,1,4,5,8,12,16,20,24,27,41,44,54,58]
                   "total_cloud_cover":[33,37,40],
                   "low_cloud_cover":[34,38,40],
                   "mid_cloud_cover":[35,38,39,40],
-                  "high_cloud_cover":[36,38,39,40]}
+                  "high_cloud_cover":[36,38,39,40],
+                  "stnlp" : [69],
+                  "precip1_depth" : [70],
+                  "precip2_depth" : [70],
+                  "precip3_depth" : [70],
+                  "precip6_depth" : [70],
+                  "precip9_depth" : [70],
+                  "precip12_depth" : [70],
+                  "precip15_depth" : [70],
+                  "precip18_depth" : [70],
+                  "precip24_depth" : [70]}
 
 N_NEIGHBOURS = 10
-
-
 
 #*********************************************
 def get_distances_angles(station_info):
@@ -68,20 +96,34 @@ def get_distances_angles(station_info):
 
 
 #*********************************************
-def neighbour_checks(station_info, restart_id = "", end_id = "", distances=np.array([]), angles=np.array([]), second = False, masking = False, doZip=False, plots = False, diagnostics = False):
+def neighbour_checks(restart_id = "", end_id = "", distances=np.array([]), angles=np.array([]), masking = False, doZip=False, plots = False, diagnostics = False):
     """
     Run through neighbour checks on list of stations passed
     
-    :param list station_info: list of lists - [[ID, lat, lon, elev]] - strings
+    :param str restart_id: which station to start on
+    :param str end_id: which station to end on
     :param array distances: array of distances between station pairs
     :param array angles: array of angles between station pairs
-    :param bool second: do the second run
     :param bool masking: apply the flags to the data to mask the observations.
+    :param bool doZip: use netCDF4 compression
+    :param bool plots: produce plots on the fly
+    :param bool diagnostics: verbose output
 
     """
-    first = not second
 
-    qc_code_version = subprocess.check_output(['svnversion']).strip()
+#    qc_code_version = subprocess.check_output(['svnversion']).strip()
+    qc_code_version = subprocess.check_output(['svn', 'info', 'file:///home/h05/rdunn/svn/hadisd_py_qc/branches/monthly/'])
+    for line in qc_code_version.split("\n"):
+        if line.split(":")[0] == "Revision":
+            qc_code_version = line.split(":")[1]
+            break
+
+    # get station information
+    try:
+        station_info = np.genfromtxt(os.path.join(INPUT_FILE_LOCS, STATION_LIST), dtype=(str))
+    except IOError:
+        print "station list not found"
+        sys.exit()
 
     # if distances and angles not calculated, then do so
     if (len(distances) == 0) or (len(angles) == 0):
@@ -94,7 +136,7 @@ def neighbour_checks(station_info, restart_id = "", end_id = "", distances=np.ar
     neighbour_info       = np.array(station_info[:,:])
 
     # sort truncated run
-    startindex = 0
+    startindex = [0]
     if restart_id != "":
         startindex, = np.where(station_info[:,0] == restart_id)
 
@@ -102,17 +144,17 @@ def neighbour_checks(station_info, restart_id = "", end_id = "", distances=np.ar
     if end_id != "":
         endindex, = np.where(station_info[:,0] == end_id)
         if endindex != len(station_info) -1:
-            station_info = station_info[startindex: endindex+1]
-            distances = distances[startindex:endindex+1,:]
-            angles = angles[startindex:endindex+1,:]
+            station_info = station_info[startindex[0]: endindex[0]+1]
+            distances = distances[startindex[0]:endindex[0]+1,:]
+            angles = angles[startindex[0]:endindex[0]+1,:]
         else:
-            station_info = station_info[startindex:]
-            distances = distances[startindex:,:]
-            angles = angles[startindex:,:]
+            station_info = station_info[startindex[0]:]
+            distances = distances[startindex[0]:,:]
+            angles = angles[startindex[0]:,:]
     else:
-        station_info = station_info[startindex:]
-        distances = distances[startindex:,:]
-        angles = angles[startindex:,:]
+        station_info = station_info[startindex[0]:]
+        distances = distances[startindex[0]:,:]
+        angles = angles[startindex[0]:,:]
         
 
     # process each neighbour
@@ -123,7 +165,7 @@ def neighbour_checks(station_info, restart_id = "", end_id = "", distances=np.ar
         print "{:35s} {}".format("Station Identifier :", stat[0])
 
         if not plots and not diagnostics:
-            logfile = file(LOG_OUTFILE_LOCS+stat[0]+'.log','a') # append to file if second iteration.
+            logfile = file(LOG_OUTFILE_LOCS+stat[0]+'.log','a') 
             logfile.write(dt.datetime.strftime(dt.datetime.now(), "%A, %d %B %Y, %H:%M:%S\n"))
             logfile.write("Neighbour Check\n")
             logfile.write("{:35s} {}\n".format("Station Identifier :", stat[0]))
@@ -134,38 +176,21 @@ def neighbour_checks(station_info, restart_id = "", end_id = "", distances=np.ar
 
         station = utils.Station(stat[0], float(stat[1]), float(stat[2]), float(stat[3]))
 
-        # if running through the first time
-        if first:
+        if os.path.exists(os.path.join(NETCDF_DATA_LOCS, station.id + "_internal.nc.gz")):
+            # if gzip file, unzip here
+            subprocess.call(["gunzip",os.path.join(NETCDF_DATA_LOCS, station.id + "_internal.nc.gz")])
+            time.sleep(5) # make sure it is unzipped before proceeding
 
-            if os.path.exists(os.path.join(NETCDF_DATA_LOCS, station.id + "_internal.nc.gz")):
-                # if gzip file, unzip here
-                subprocess.call(["gunzip",os.path.join(NETCDF_DATA_LOCS, station.id + "_internal.nc.gz")])
-                time.sleep(5) # make sure it is unzipped before proceeding
+        # read in the data
+        ncdfp.read(os.path.join(NETCDF_DATA_LOCS, "hadisd.{}_19310101-{}_{}_internal.nc".format(LONG_VERSION, END_TIME, station.id)), station, process_vars, carry_thru_vars, diagnostics = diagnostics)
 
-            # read in the data
-            ncdfp.read(os.path.join(NETCDF_DATA_LOCS, station.id + "_internal.nc"), station, process_vars, carry_thru_vars, diagnostics = diagnostics)
+        if plots or diagnostics:
+            print "{:35s}  {}\n".format("Total station record size :",len(station.time.data))
+        else:
+            logfile.write("{:35s}  {}\n".format("Total station record size :",len(station.time.data)))
 
-            if plots or diagnostics:
-                print "{:35s}  {}\n".format("Total station record size :",len(station.time.data))
-            else:
-                logfile.write("{:35s}  {}\n".format("Total station record size :",len(station.time.data)))
+        match_to_compress = utils.create_fulltimes(station, process_vars, DATASTART, DATAEND, carry_thru_vars)
 
-            match_to_compress = utils.create_fulltimes(station, process_vars, DATASTART, DATAEND, carry_thru_vars)
-
-        # or if second pass through?
-        elif second:
-            if os.path.exists(os.path.join(NETCDF_DATA_LOCS, station.id + "internal2.nc.gz")):
-                # if gzip file, unzip here
-                subprocess.call(["gunzip",os.path.join(NETCDF_DATA_LOCS, station.id + "_internal2.nc.gz")])
-                time.sleep(5) # make sure it is unzipped before proceeding
-
-            ncdfp.read(os.path.join(NETCDF_DATA_LOCS, station.id + "_internal2.nc"), station, process_vars, carry_thru_vars, diagnostics = diagnostics)
-            if plots or diagnostics:
-                print "{:35s}  {}\n".format("Total station record size :",len(station.time.data))
-            else:
-                logfile.write("{:35s}  {}\n".format("Total station record size :",len(station.time.data)))
-
-            match_to_compress = utils.create_fulltimes(station, process_vars, DATASTART, DATAEND, carry_thru_vars)
 
 
         # select neighbours
@@ -205,7 +230,7 @@ def neighbour_checks(station_info, restart_id = "", end_id = "", distances=np.ar
                 
                 if len(st_var.data.compressed()) > 0:
 
-                    final_neighbours = n_utils.select_neighbours(station, variable, neighbour_info[neighbours], neighbours, neighbour_distances[neighbours], neighbour_quadrants, NETCDF_DATA_LOCS, DATASTART, DATAEND, logfile, second = second, diagnostics = diagnostics, plots = plots)
+                    final_neighbours = n_utils.select_neighbours(station, variable, neighbour_info[neighbours], neighbours, neighbour_distances[neighbours], neighbour_quadrants, NETCDF_DATA_LOCS, DATASTART, DATAEND, logfile, diagnostics = diagnostics, plots = plots)
 
 
                     # now read in final set of neighbours and process
@@ -222,10 +247,7 @@ def neighbour_checks(station_info, restart_id = "", end_id = "", distances=np.ar
                         neigh_details = neighbour_info[nn_loc]
                         neigh = utils.Station(neigh_details[0], float(neigh_details[1]), float(neigh_details[2]), float(neigh_details[3]))
 
-                        if first:
-                            ncdfp.read(os.path.join(NETCDF_DATA_LOCS, neigh.id + "_internal.nc"), neigh, [variable], diagnostics = diagnostics, read_input_station_id = False)
-                        elif second:
-                            ncdfp.read(os.path.join(NETCDF_DATA_LOCS, neigh.id + "_internal2.nc"), neigh, [variable], diagnostics = diagnostics, read_input_station_id = False)
+                        ncdfp.read(os.path.join(NETCDF_DATA_LOCS, "hadisd.{}_19310101-{}_{}_internal.nc".format(LONG_VERSION, END_TIME, station.id)), neigh, [variable], diagnostics = diagnostics, read_input_station_id = False)
 
                         dummy = utils.create_fulltimes(neigh, [variable], DATASTART, DATAEND, [], do_input_station_id = False)
 
@@ -294,22 +316,17 @@ def neighbour_checks(station_info, restart_id = "", end_id = "", distances=np.ar
         # end of neighbour check
         utils.append_history(station, "Neighbour Outlier Check")
         
-        # clean up months 
+        # clean up months - no difference for odd months - should just run through.
 
         qc_tests.clean_up.clu(station, ["temperatures","dewpoints","slp","windspeeds","winddirs"], [44,45,46,47,48], FLAG_COL_DICT, DATASTART, DATAEND, logfile, plots = plots, diagnostics = diagnostics)
-
+        utils.apply_flags_from_A_to_B(station, "slp", "stnlp", diagnostics = diagnostics)
 
         if diagnostics or plots: raw_input("stop")
 
         # masking (at least call from here - optional call from internal?)
 
         # write to file
-        if first:
-            ncdfp.write(os.path.join(NETCDF_DATA_LOCS, station.id + "_external.nc"), station, process_vars, os.path.join(INPUT_FILE_LOCS,'attributes.dat'), opt_var_list = carry_thru_vars, compressed = match_to_compress, processing_date = '', qc_code_version = qc_code_version)
-            # gzip the raw file
-        elif second:
-            ncdfp.write(os.path.join(NETCDF_DATA_LOCS, station.id + "_external2.nc"), station, process_vars, os.path.join(INPUT_FILE_LOCS,'attributes.dat'), opt_var_list = carry_thru_vars, compressed = match_to_compress, processing_date = '', qc_code_version = qc_code_version)
-            # gzip the raw file
+        ncdfp.write(os.path.join(NETCDF_DATA_LOCS, "hadisd.{}_19310101-{}_{}_external.nc".format(LONG_VERSION, END_TIME, station.id)), station, process_vars, os.path.join(INPUT_FILE_LOCS,'attributes.dat'), opt_var_list = carry_thru_vars, compressed = match_to_compress, processing_date = dt.datetime.strftime(dt.datetime.now(), "%d-%b-%Y"), qc_code_version = qc_code_version)
  
 
         # masking - apply the flags and copy masked data to flagged_obs attribute
@@ -318,10 +335,7 @@ def neighbour_checks(station_info, restart_id = "", end_id = "", distances=np.ar
             station = utils.mask(station, process_vars, logfile, FLAG_COL_DICT)
 
             # write to file
-            if first:
-                ncdfp.write(os.path.join(NETCDF_DATA_LOCS, station.id + "_mask.nc"), station, process_vars, os.path.join(INPUT_FILE_LOCS,'attributes.dat'), opt_var_list = carry_thru_vars, compressed = match_to_compress, processing_date = '', qc_code_version = qc_code_version)
-            elif second:
-                ncdfp.write(os.path.join(NETCDF_DATA_LOCS, station.id + "_mask2.nc"), station, process_vars, os.path.join(INPUT_FILE_LOCS,'attributes.dat'), opt_var_list = carry_thru_vars, compressed = match_to_compress, processing_date = '', qc_code_version = qc_code_version)
+            ncdfp.write(os.path.join(NETCDF_DATA_LOCS, "hadisd.{}_19310101-{}_{}.nc".format(LONG_VERSION, END_TIME, station.id)), station, process_vars, os.path.join(INPUT_FILE_LOCS,'attributes.dat'), opt_var_list = carry_thru_vars, compressed = match_to_compress, processing_date = dt.datetime.strftime(dt.datetime.now(), "%d-%b-%Y"), qc_code_version = qc_code_version)
 
         if plots or diagnostics:
             print "Masking completed\n"
@@ -338,17 +352,11 @@ def neighbour_checks(station_info, restart_id = "", end_id = "", distances=np.ar
     # gzip up all the raw files
     if doZip:
         for st, stat in enumerate(station_info):       
-            if first:
-                subprocess.call(["gzip",os.path.join(NETCDF_DATA_LOCS, stat[0]+"_internal.nc")])
-                if masking:
-                    subprocess.call(["gzip",os.path.join(NETCDF_DATA_LOCS, stat[0]+"_external.nc")])
-                    subprocess.call(["gzip",os.path.join(NETCDF_DATA_LOCS, stat[0]+"_mask.nc")])
+            subprocess.call(["gzip",os.path.join(NETCDF_DATA_LOCS, "hadisd.{}_19310101-{}_{}_internal.nc".format(LONG_VERSION, END_TIME, station.id))])
+            if masking:
+                subprocess.call(["gzip",os.path.join(NETCDF_DATA_LOCS, "hadisd.{}_19310101-{}_{}_external.nc".format(LONG_VERSION, END_TIME, station.id))])
+                subprocess.call(["gzip",os.path.join(NETCDF_DATA_LOCS, "hadisd.{}_19310101-{}_{}.nc".format(LONG_VERSION, END_TIME, station.id))])
 
-            elif second:
-                subprocess.call(["gzip",os.path.join(NETCDF_DATA_LOCS, stat[0]+"_internal2.nc")])
-                if masking:
-                    subprocess.call(["gzip",os.path.join(NETCDF_DATA_LOCS, stat[0]+"_external2.nc")])
-                    subprocess.call(["gzip",os.path.join(NETCDF_DATA_LOCS, stat[0]+"_mask2.nc")])
 
     print "Neighbour Checks completed\n"
 
@@ -359,8 +367,6 @@ if __name__=="__main__":
 
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--second', dest='second', action='store_true', default = False,
-                        help='Second run through')
     parser.add_argument('--masking', dest='masking', action='store_true', default = False,
                         help='Apply flags')
     parser.add_argument('--do_zip', dest='doZip', action='store_true', default = False,
@@ -374,30 +380,8 @@ if __name__=="__main__":
     parser.add_argument('--plots', dest='plots', action='store_true', default = False,
                         help='Run plots (will not write out file)')
     args = parser.parse_args()
-
-    """To run as stand alone, process the file and obtain station list"""
-
-    station_list = "candidate_stations.txt"
-
-    try:
-        station_info = np.genfromtxt(os.path.join(INPUT_FILE_LOCS, station_list), dtype=(str))
-    except IOError:
-        print "station list not found"
-        sys.exit()
-
-    uk = False
-    if uk:
-        uk_locs = []
-        for s,station in enumerate(station_info[:,0]):
-            if station[:2] == "03":
-                uk_locs += [s]
-                
-        station_info = station_info[uk_locs]
-
-    # station_info = [["030220-99999","57.4670","-7.3670","6.0000"]]
-
     
-    neighbour_checks(station_info, restart_id = args.restart_id, end_id = args.end_id, second = args.second, masking = args.masking, doZip = args.doZip, diagnostics = args.diagnostics, plots = args.plots)
+    neighbour_checks(restart_id = args.restart_id, end_id = args.end_id, masking = args.masking, doZip = args.doZip, diagnostics = args.diagnostics, plots = args.plots)
 
 #    import cProfile
 

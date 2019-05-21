@@ -6,9 +6,9 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 116                                           $:  Revision of last commit
+#$Rev:: 129                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2017-01-30 15:24:24 +0000 (Mon, 30 Jan 2017) $:  Date of last commit
+#$Date:: 2017-08-15 10:02:07 +0100 (Tue, 15 Aug 2017) $:  Date of last commit
 #************************************************************************
 
 
@@ -21,6 +21,7 @@ import gc
 # RJHD routines
 import qc_utils as utils
 import netcdf_procs as ncdfp
+from set_paths_and_vars import *
 
 
 N_NEIGHBOURS = 10
@@ -203,7 +204,7 @@ def hourly_daily_anomalies(timeseries, obs_per_day = 6):
     return anomalies.ravel() # hourly_daily_anomalies
 
 #*******************************************************
-def select_neighbours(station, variable, neighbour_info, neighbours, neighbour_distances, neighbour_quadrants, data_locs, datastart, dataend, logfile, second = False, diagnostics = False, plots = False):
+def select_neighbours(station, variable, neighbour_info, neighbours, neighbour_distances, neighbour_quadrants, data_locs, datastart, dataend, logfile, diagnostics = False, plots = False):
     '''
     From the list of nearby stations select the ones which will be good neighours for the test.
     Select on basis of correlation, overlap of data points and bearing (quadrants)
@@ -218,14 +219,11 @@ def select_neighbours(station, variable, neighbour_info, neighbours, neighbour_d
     :param datetime datastart: start of data set
     :param datetime dataend: end of data set
     :param file logfile: logfile to store outputs
-    :param boolean second: second run through
     :param boolean diagnostics: output diagnostic information
     :param boolean plots: make a plot
 
     :returns: final_locs - array of station sequence numbers to use.
     '''
-
-    first = not second
 
     # set up storage arrays
     n_correlations = np.zeros(len(neighbours))
@@ -244,10 +242,8 @@ def select_neighbours(station, variable, neighbour_info, neighbours, neighbour_d
         n_details = neighbour_info[nn]
         neigh = utils.Station(n_details[0], float(n_details[1]), float(n_details[2]), float(n_details[3]))
 
-        if first:
-            ncdfp.read(os.path.join(data_locs, neigh.id + "_internal.nc"), neigh, [variable], diagnostics = diagnostics, read_input_station_id = False)
-        elif second:
-            ncdfp.read(os.path.join(data_locs, neigh.id + "_internal2.nc"), neigh, [variable], diagnostics = diagnostics, read_input_station_id = False)
+        ncdfp.read(os.path.join(NETCDF_DATA_LOCS, "hadisd.{}_19310101-{}_{}_internal.nc".format(LONG_VERSION, END_TIME, station.id)), neigh, [variable], diagnostics = diagnostics, read_input_station_id = False)
+       
 
         dummy = utils.create_fulltimes(neigh, [variable], datastart, dataend, [], do_input_station_id = False)
 

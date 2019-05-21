@@ -6,9 +6,9 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 112                                           $:  Revision of last commit
+#$Rev:: 219                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2017-01-13 14:47:17 +0000 (Fri, 13 Jan 2017) $:  Date of last commit
+#$Date:: 2019-05-20 16:56:47 +0100 (Mon, 20 May 2019) $:  Date of last commit
 #************************************************************************
 
 
@@ -23,6 +23,7 @@ import os
 
 # RJHD 
 import qc_utils as utils
+from set_paths_and_vars import *
 
 #*******************************************************
 def read(filename, station, var_list, opt_var_list = [], diagnostics = False, read_input_station_id = True, read_qc_flags = True, read_flagged_obs = True):
@@ -98,9 +99,15 @@ def read(filename, station, var_list, opt_var_list = [], diagnostics = False, re
 
         this_var.dtype = var.dtype
 
-        if variable in ["input_station_id","precip1_condition","windtypes","precip2_condition","precip3_condition","precip4_condition"]:
+        if variable in ["input_station_id","windtypes","precip1_condition","precip2_condition","precip3_condition","precip6_condition","precip9_condition","precip12_condition","precip15_condition","precip18_condition","precip24_condition"]:
             # this is a slow step for input_station_id
-            this_var.data = np.ma.array(["".join(i) for i in var[:]])
+            if variable == "input_station_id":
+                out_string = var[:].tostring()
+                stn_id_len = 12
+                this_var.data = np.array([out_string[i: i + stn_id_len] for i in range(0, len(out_string), stn_id_len)])
+            else:
+                this_var.data = np.ma.array(["".join(i) for i in var[:]])
+            
         else:
             this_var.data = np.ma.array(var[:]) # keep as masked array           
             
@@ -142,10 +149,11 @@ def read(filename, station, var_list, opt_var_list = [], diagnostics = False, re
         try:
             this_var.fdi = var.flagged_value
         except AttributeError:
-            if variable in ["temperatures","dewpoints","slp","windspeeds"]:
-                this_var.fdi=-2.e30
-            elif variable in ["total_cloud_cover","low_cloud_cover","mid_cloud_cover","high_cloud_cover", "winddirs"]:
+            if variable in ["total_cloud_cover","low_cloud_cover","mid_cloud_cover","high_cloud_cover", "winddirs"]:
                 this_var.fdi=-888
+            elif variable in var_list:
+                # all others in the list aare floats
+                this_var.fdi=-2.e30
             pass
 
         try:
@@ -171,7 +179,7 @@ def read(filename, station, var_list, opt_var_list = [], diagnostics = False, re
     # read in the flagged_obs array   
     if read_flagged_obs == True:
         try:
-            flagged_obs = ncfile.variables["flagged_value"]
+            flagged_obs = ncfile.variables["flagged_obs"]
         except KeyError:
             print "no flagged obs available in netcdf file"
             # if doesn't exist, make an empty array
@@ -354,7 +362,7 @@ def write(filename, station, var_list, attr_file, processing_date = '', qc_code_
         
         if var == "input_station_id":
             nc_var = outfile.createVariable(st_var.name, st_var.dtype, ('time','long_character_length',), zlib = do_zip)
-        elif var in ["precip1_condition","windtypes","precip2_condition","precip3_condition","precip4_condition",""]:
+        elif var in ["windtypes","precip1_condition","precip2_condition","precip3_condition","precip6_condition","precip9_condition","precip12_condition","precip15_condition","precip18_condition","precip24_condition",""]:
             nc_var = outfile.createVariable(st_var.name, st_var.dtype, ('time','character_length',), zlib = do_zip, fill_value = st_var.mdi)           
         else:
 
@@ -451,9 +459,9 @@ def write(filename, station, var_list, attr_file, processing_date = '', qc_code_
                 flagged_obs[:,v] = st_var.flagged_obs       
             
             if least_significant_digit != 0:
-                nc_var = outfile.createVariable("flagged_value", np.dtype('float'), ('time','flagged',), zlib = do_zip, least_significant_digit = least_significant_digit, fill_value = -1.e30)
+                nc_var = outfile.createVariable("flagged_obs", np.dtype('float'), ('time','flagged',), zlib = do_zip, least_significant_digit = least_significant_digit, fill_value = -1.e30)
             else:
-                nc_var = outfile.createVariable("flagged_value", np.dtype('float'), ('time','flagged',), zlib = do_zip, fill_value = -1.e30)
+                nc_var = outfile.createVariable("flagged_obs", np.dtype('float'), ('time','flagged',), zlib = do_zip, fill_value = -1.e30)
             nc_var.units = '1'
             nc_var.missing_value = -1.e30
             nc_var.long_name = "Observation Values removed by QC flags "+" ".join(var_list)
@@ -493,13 +501,26 @@ def write(filename, station, var_list, attr_file, processing_date = '', qc_code_
         
         outfile.__setattr__(attr, attribs[attr])
     
-    # from code
+    # added as recommended for CF
+    outfile.geospatial_lat_max = station.lat
+    outfile.geospatial_lat_min = station.lat
+    outfile.geospatial_lat_units = "degrees"
+    outfile.geospatial_lon_max = station.lon
+    outfile.geospatial_lon_min = station.lon
+    outfile.geospatial_lon_units = "degrees"
+    outfile.geospatial_vertical_max = station.elev
+    outfile.geospatial_vertical_min = station.elev
+    outfile.geospatial_vertical_units = "m"
 
-    # removed these as added as coordinates
-#    outfile.station_id = station.id
-#    outfile.latitude = station.lat
-#    outfile.longitude = station.lon
-#    outfile.elevation = station.elev
+    # added as per station   
+    outfile.station_id = station.id
+    if compressed != []:
+        outfile.time_coverage_start = dt.datetime.strftime(DATASTART + dt.timedelta(hours = station.time.data[compressed][0]), "%Y-%m-%dT%H:%MZ")
+        outfile.time_coverage_end = dt.datetime.strftime(DATASTART + dt.timedelta(hours = station.time.data[compressed][-1]), "%Y-%m-%dT%H:%MZ")
+    else:
+        outfile.time_coverage_start = dt.datetime.strftime(DATASTART + dt.timedelta(hours = station.time.data[0]), "%Y-%m-%dT%H:%MZ")
+        outfile.time_coverage_end = dt.datetime.strftime(DATASTART + dt.timedelta(hours = station.time.data[-1]), "%Y-%m-%dT%H:%MZ")
+
     outfile.date_created = dt.datetime.strftime(dt.datetime.now(), "%Y-%m-%d, %H:%M")
     outfile.qc_code_version = qc_code_version
     outfile.station_information = 'Where station is a composite the station id refers to the primary source used in the timestep and does apply to all elements'

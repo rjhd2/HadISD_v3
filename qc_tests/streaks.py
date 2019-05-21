@@ -14,9 +14,9 @@
 #
 #************************************************************************
 #                    SVN Info
-#$Rev:: 114                                           $:  Revision of last commit
+#$Rev:: 219                                           $:  Revision of last commit
 #$Author:: rdunn                                      $:  Author of last commit
-#$Date:: 2017-01-17 17:26:42 +0000 (Tue, 17 Jan 2017) $:  Date of last commit
+#$Date:: 2019-05-20 16:56:47 +0100 (Mon, 20 May 2019) $:  Date of last commit
 #************************************************************************
 import numpy as np
 import scipy as sp
@@ -30,11 +30,12 @@ import qc_utils as utils
 # threshold values for low, mid and high resolution for each of the variables tested
 # consecutive repeats (ignoring missing data); spread over N days; same at each hour of day for N days; full day repeats
 
-T = {1: [40, 14, 25, 10], 0.5: [30, 10, 20, 7], 0.1: [24, 7, 15, 5]}
-D = {1: [80, 14, 25, 10], 0.5: [60, 10, 20, 7], 0.1: [48, 7, 15, 2]}
-S = {1: [120, 28, 25, 10], 0.5:[100, 21, 20, 7], 0.1:[72, 14, 15, 5]}
-WS = {1: [40, 14, 25, 10], 0.5: [30, 10, 20, 7], 0.1: [24, 7, 15, 5]}
-WD = {90: [120, 28, 28, 10], 45: [96, 28, 28, 10], 22: [72, 21, 21, 7], 10: [48, 14, 14, 7], 1: [24, 7, 14, 5]}
+# -1 value is unknown - so use the least stringent
+T = {-1: [40, 14, 25, 10], 1: [40, 14, 25, 10], 0.5: [30, 10, 20, 7], 0.1: [24, 7, 15, 5]}
+D = {-1: [80, 14, 25, 10], 1: [80, 14, 25, 10], 0.5: [60, 10, 20, 7], 0.1: [48, 7, 15, 2]}
+S = {-1: [120, 28, 25, 10], 1: [120, 28, 25, 10], 0.5:[100, 21, 20, 7], 0.1:[72, 14, 15, 5]}
+WS = {-1: [40, 14, 25, 10], 1: [40, 14, 25, 10], 0.5: [30, 10, 20, 7], 0.1: [24, 7, 15, 5]}
+WD = {-1: [120, 28, 28, 10], 90: [120, 28, 28, 10], 45: [96, 28, 28, 10], 22: [72, 21, 21, 7], 10: [48, 14, 14, 7], 1: [24, 7, 14, 5]}
 
 limits_dict = {"temperatures": T, "dewpoints":  D, "slp": S, "windspeeds": WS, "winddirs": WD}
 
@@ -59,7 +60,7 @@ def residuals_LS(p, Y, X):
     return err # ResidualsLS
 
 #************************************************************************
-def rsc_get_straight_string_threshold(st_var, start, end, reporting = 0., diagnostics = False, plots = False, old_threshold = 0):
+def rsc_get_straight_string_threshold(st_var, start, end, reporting = 0., diagnostics = False, plots = False, doMonth = False, old_threshold = 0):
     '''
     Derive threshold number for strings/streaks of repeating values
     
@@ -71,7 +72,7 @@ def rsc_get_straight_string_threshold(st_var, start, end, reporting = 0., diagno
     :param bool plots: do plots
     :param float old_threshold: old threshold to use as comparison
     '''
-    all_filtered = utils.apply_filter_flags(st_var)
+    all_filtered = utils.apply_filter_flags(st_var, doMonth = doMonth, start = start, end = end)
     
    
     # find and count the length of all repeating strings
@@ -106,6 +107,9 @@ def rsc_get_straight_string_threshold(st_var, start, end, reporting = 0., diagno
         
     threshold = utils.get_critical_values(string_lengths, binmin = 1, binwidth = 1, plots = plots, diagnostics = diagnostics, title = title, line_label = line_label, xlabel = xlabel, old_threshold = old_threshold)
  
+    if diagnostics:
+        print "threshold {}".format(threshold)
+
     return threshold # rsc_get_straight_string_threshold
 
 
@@ -234,7 +238,7 @@ def rsc_annual_string_expectance(all_filtered, value_starts, value_lengths, flag
 
 
 #************************************************************************
-def rsc_straight_strings(st_var, times, n_obs, n_days, start, end, wind = False, reporting = 0., diagnostics = False, plots = False, dynamic = True):
+def rsc_straight_strings(st_var, times, n_obs, n_days, start, end, wind = False, reporting = 0., diagnostics = False, plots = False, dynamic = True, doMonth = False):
     '''
     Check for strings/streaks of repeating values
     
@@ -260,18 +264,22 @@ def rsc_straight_strings(st_var, times, n_obs, n_days, start, end, wind = False,
         wd_st_var.data[calms] = wd_st_var.mdi
 
         if dynamic:
-            threshold = rsc_get_straight_string_threshold(wd_st_var, start, end, reporting = reporting, diagnostics = diagnostics, plots = plots, old_threshold = n_obs)          
+            threshold = rsc_get_straight_string_threshold(wd_st_var, start, end, reporting = reporting, diagnostics = diagnostics, plots = plots, doMonth = doMonth, old_threshold = n_obs)          
 
             if threshold < n_obs: n_obs = threshold
 
+        # threshold has been set applying "month" where appropriate.  
+        # For the detection, want flagged data removed, but final incomplete year included.
         all_filtered = utils.apply_filter_flags(wd_st_var) # calms have been removed
 
     else:
         if dynamic:
-            threshold = rsc_get_straight_string_threshold(st_var, start, end, reporting = reporting, diagnostics = diagnostics, plots = plots, old_threshold = n_obs)          
+            threshold = rsc_get_straight_string_threshold(st_var, start, end, reporting = reporting, diagnostics = diagnostics, plots = plots, doMonth = doMonth, old_threshold = n_obs)          
             
             if threshold < n_obs: n_obs = threshold
 
+        # threshold has been set applying "month" where appropriate.  
+        # For the detection, want flagged data removed, but final incomplete year included.
         all_filtered = utils.apply_filter_flags(st_var)
     
     flags = np.zeros(len(all_filtered))
@@ -337,7 +345,9 @@ def rsc_whole_day_repeats(data, n_wday, st_var, diagnostics = False, plots = Fal
     :param bool diagnostics: do diagnostic output
     :param bool plots: do plots
     '''
-    
+
+    # n_wday fixed threshold - incomplete year irrelevant
+
     flags = np.zeros(data.shape)
     
     ndays = [] # to get distribution
@@ -385,6 +395,7 @@ def rsc_hourly_repeats(st_var, times, n_hrs, n_wday, diagnostics = False, plots 
     :param bool plots: do plots
     '''
 
+    # n_hrs fixed threshold - incomplete year irrelevant
 
     flags = np.zeros(len(st_var.data))
     hourly_data = utils.apply_filter_flags(st_var)
@@ -427,7 +438,7 @@ def rsc_hourly_repeats(st_var, times, n_hrs, n_wday, diagnostics = False, plots 
 
 
 #************************************************************************
-def rsc(station, var_list, flag_col, start, end, logfile, diagnostics = False, plots = False):
+def rsc(station, var_list, flag_col, start, end, logfile, diagnostics = False, plots = False, doMonth = False):
     ''' Wrapper for the four individual repeating streak check tests '''
     
     times = station.time.data
@@ -443,22 +454,21 @@ def rsc(station, var_list, flag_col, start, end, logfile, diagnostics = False, p
             winddir= False
             if variable == "winddirs": winddir = True
 
-            reporting_resolution = utils.reporting_accuracy(utils.apply_filter_flags(st_var), winddir = winddir, plots = plots)
+            reporting_resolution = utils.reporting_accuracy(utils.apply_filter_flags(st_var, doMonth = doMonth, start = start, end = end), winddir = winddir, plots = plots)
 
             limits = limits_dict[variable][reporting_resolution]  
 
             # need to apply flags to st_var.flags each time for filtering
-            station.qc_flags[:,flag_col[v][0]] = rsc_straight_strings(st_var, times, limits[0], limits[1], start, end, reporting = reporting_resolution, wind = wind, diagnostics = diagnostics, plots = plots, dynamic = True)
+            station.qc_flags[:,flag_col[v][0]] = rsc_straight_strings(st_var, times, limits[0], limits[1], start, end, reporting = reporting_resolution, wind = wind, diagnostics = diagnostics, plots = plots, dynamic = True, doMonth = doMonth)
 
-            station.qc_flags[:, flag_col[v][1]], station.qc_flags[:, flag_col[v][2]]= rsc_hourly_repeats(st_var, times, limits[2], limits[3], diagnostics = diagnostics, plots = plots)
+            # no effect of final incomplete year ("month" option) as limits[2] and limits[3] fixed
+            station.qc_flags[:, flag_col[v][1]], station.qc_flags[:, flag_col[v][2]] = rsc_hourly_repeats(st_var, times, limits[2], limits[3], diagnostics = diagnostics, plots = plots)
 
 
             for streak_type in range(3):
                 flag_locs = np.where(station.qc_flags[:, flag_col[v][streak_type]] != 0)
-                if plots or diagnostics:
-                    utils.print_flagged_obs_number(logfile, "Streak Check", variable, len(flag_locs[0]), noWrite = True)
-                else:
-                    utils.print_flagged_obs_number(logfile, "Streak Check", variable, len(flag_locs[0]))
+                utils.print_flagged_obs_number(logfile, "Streak Check", variable, len(flag_locs[0]), noWrite = diagnostics)
+                
 
 
                 # copy flags into attribute

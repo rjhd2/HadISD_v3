@@ -39,12 +39,11 @@ qc_test=np.array(['DUP','TFV','DFV','SFV','DNL','TGP','DGP','SGP','TRC','DRC',\
 	  'LMB','MMB','HMB','BMB','OCT','OCD','OCW','OCS','TVR','DVR',\
 	  'SVR','WVR','WSL','WDL','WRS','STR_T','STR_D','STR_w','STR_S','ALL_T','ALL_Td','ALL_SLP','ACL'])
 
-station_list = "candidate_stations.txt"
 ms=20
 
 
 try:
-    station_info = np.genfromtxt(os.path.join(INPUT_FILE_LOCS, station_list), dtype=(str))
+    station_info = np.genfromtxt(os.path.join(INPUT_FILE_LOCS, STATION_LIST), dtype=(str))
 except IOError:
     print "station list not found"
     sys.exit()
