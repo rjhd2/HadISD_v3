@@ -2,8 +2,8 @@
 hadisd_version:v301_201904p
 previous_version:v301_201903p
 [Paths]
-root:/scratch/rdunn/hadisd/
-ancillaries:~hadobs/hadisd/input_files_v3/
+root:/scratch/
+ancillaries:input_files/
 [Files]
 station_list:candidate_stations.txt
 merger_list:final_mergers.txt
